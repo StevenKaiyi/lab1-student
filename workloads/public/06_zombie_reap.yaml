@@ -1,0 +1,16 @@
+name: "Zombie process reaping"
+id: t_zombie_reap
+category: process
+timeout_sec: 20
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: verify_zombie_count
+    max_zombies: 0
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: verify_zombie_count
+    max_zombies: 0

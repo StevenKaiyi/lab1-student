@@ -1,0 +1,20 @@
+name: "Single pane basic IO"
+id: t_1pane_basic
+category: io
+timeout_sec: 15
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: verify_env_check
+    pane: 0
+  - action: wait
+    duration_ms: 1000
+  - action: verify_output_token
+    pane: 0
+  - action: verify_input_token
+    pane: 0

@@ -1,0 +1,23 @@
+name: "Resize triggers SIGWINCH"
+id: t_resize_sigwinch
+category: resize
+timeout_sec: 15
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: verify_env_check
+    pane: 0
+  - action: resize
+    rows: 30
+    cols: 100
+  - action: wait
+    duration_ms: 1000
+  - action: verify_signal
+    pane: 0
+    signal: SIGWINCH
+    expect: received

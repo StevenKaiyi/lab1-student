@@ -1,0 +1,54 @@
+name: "4 panes with focus switch + IO verification"
+id: t_4pane_focus
+category: pane_management
+timeout_sec: 30
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: wait_probe_ready
+    pane: 1
+  - action: wait_probe_ready
+    pane: 2
+  - action: wait_probe_ready
+    pane: 3
+  - action: verify_env_check
+    pane: 0
+  - action: verify_env_check
+    pane: 1
+  - action: verify_env_check
+    pane: 2
+  - action: verify_env_check
+    pane: 3
+  - action: verify_pgrp_isolation
+    panes: [0, 1, 2, 3]
+  - action: switch_focus
+    pane: 2
+  - action: send_keys
+    pane: 2
+    keys: "C-c"
+  - action: wait
+    duration_ms: 500
+  - action: verify_signal
+    pane: 2
+    signal: SIGINT
+    expect: received
+  - action: verify_signal
+    pane: 0
+    signal: SIGINT
+    expect: not_received
+  - action: verify_signal
+    pane: 1
+    signal: SIGINT
+    expect: not_received
+  - action: verify_signal
+    pane: 3
+    signal: SIGINT
+    expect: not_received

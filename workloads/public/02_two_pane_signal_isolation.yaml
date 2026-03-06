@@ -1,0 +1,34 @@
+name: "Signal Ctrl+C isolation with 2 panes"
+id: t_2pane_sigint
+category: signal
+timeout_sec: 20
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: wait_probe_ready
+    pane: 1
+  - action: verify_env_check
+    pane: 0
+  - action: verify_env_check
+    pane: 1
+  - action: verify_pgrp_isolation
+    panes: [0, 1]
+  - action: send_keys
+    pane: 1
+    keys: "C-c"
+  - action: wait
+    duration_ms: 500
+  - action: verify_signal
+    pane: 1
+    signal: SIGINT
+    expect: received
+  - action: verify_signal
+    pane: 0
+    signal: SIGINT
+    expect: not_received

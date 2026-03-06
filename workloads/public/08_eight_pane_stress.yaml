@@ -1,0 +1,41 @@
+name: "8 pane creation stress"
+id: t_8pane_stress
+category: stress
+timeout_sec: 30
+terminal:
+  rows: 48
+  cols: 120
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: wait_probe_ready
+    pane: 1
+  - action: wait_probe_ready
+    pane: 2
+  - action: wait_probe_ready
+    pane: 3
+  - action: wait_probe_ready
+    pane: 4
+  - action: wait_probe_ready
+    pane: 5
+  - action: wait_probe_ready
+    pane: 6
+  - action: wait_probe_ready
+    pane: 7
+  - action: verify_env_check
+    pane: 0
+  - action: verify_env_check
+    pane: 7
+  - action: verify_pgrp_isolation
+    panes: [0, 1, 2, 3, 4, 5, 6, 7]
+  - action: verify_zombie_count
+    max_zombies: 0

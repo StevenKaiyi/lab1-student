@@ -1,0 +1,22 @@
+name: "Pipeout auto-cleanup when command exits"
+id: t_pipeout_cmd_exits
+category: process
+timeout_sec: 15
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: pipeout_start
+    pane: 0
+    cmd: "head -1 > $TMP/pipeout_exit.txt"
+  - action: wait
+    duration_ms: 3000
+  - action: verify_file_contains
+    file_path: "$TMP/pipeout_exit.txt"
+    pattern: ""
+  - action: verify_zombie_count
+    max_zombies: 0

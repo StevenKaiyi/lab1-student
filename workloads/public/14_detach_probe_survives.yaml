@@ -1,0 +1,32 @@
+name: "Probe survives detach and IO works after reattach"
+id: t_detach_probe_survives
+category: session
+timeout_sec: 25
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: wait_probe_ready
+    pane: 1
+  - action: verify_env_check
+    pane: 0
+  - action: detach
+  - action: verify_server_alive
+  - action: wait
+    duration_ms: 1000
+  - action: verify_pane_alive
+    pane: 0
+  - action: verify_pane_alive
+    pane: 1
+  - action: reattach
+  - action: wait
+    duration_ms: 500
+  - action: verify_input_token
+    pane: 0
+  - action: verify_input_token
+    pane: 1

@@ -1,0 +1,26 @@
+name: "Two clients see same output"
+id: t_multi_client_basic
+category: multi_client
+timeout_sec: 25
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: attach_client
+  - action: wait
+    duration_ms: 500
+  - action: verify_extra_client_output
+    client: 0
+    pane: 0
+  - action: verify_extra_client_alive
+    client: 0
+  - action: detach_extra_client
+    client: 0
+  - action: wait
+    duration_ms: 300
+  - action: verify_input_token
+    pane: 0

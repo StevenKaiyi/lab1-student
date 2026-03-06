@@ -1,0 +1,24 @@
+name: "Log pane output to file"
+id: t_log_basic
+category: io
+timeout_sec: 25
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: log_start
+    pane: 0
+    file_path: "$TMP/log_basic.txt"
+  - action: run_command
+    command: "echo LOGTEST_MARKER"
+  - action: wait
+    duration_ms: 2000
+  - action: log_stop
+    pane: 0
+  - action: verify_file_contains
+    file_path: "$TMP/log_basic.txt"
+    pattern: "LOGTEST_MARKER"

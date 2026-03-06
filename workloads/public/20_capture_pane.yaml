@@ -1,0 +1,22 @@
+name: "Capture pane content to file"
+id: t_capture_pane
+category: capture
+timeout_sec: 15
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: run_command
+    command: "echo CAPTURE_TEST_MARKER"
+  - action: wait
+    duration_ms: 1000
+  - action: capture_pane
+    pane: 0
+    file_path: "$TMP/capture.txt"
+  - action: verify_file_contains
+    file_path: "$TMP/capture.txt"
+    pattern: "CAPTURE_TEST_MARKER"

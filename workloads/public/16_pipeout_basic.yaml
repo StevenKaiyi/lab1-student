@@ -1,0 +1,26 @@
+name: "Pipeout pane output to external command"
+id: t_pipeout_basic
+category: io
+timeout_sec: 15
+terminal:
+  rows: 24
+  cols: 80
+steps:
+  - action: start
+  - action: create_pane_with_probe
+  - action: wait_probe_ready
+    pane: 0
+  - action: pipeout_start
+    pane: 0
+    cmd: "cat > $TMP/pipeout_basic.txt"
+  - action: run_command
+    command: "echo PIPETEST_MARKER"
+  - action: wait
+    duration_ms: 2000
+  - action: pipeout_stop
+    pane: 0
+  - action: wait
+    duration_ms: 300
+  - action: verify_file_contains
+    file_path: "$TMP/pipeout_basic.txt"
+    pattern: "PIPETEST_MARKER"

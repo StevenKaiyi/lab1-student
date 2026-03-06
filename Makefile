@@ -11,8 +11,8 @@ mini-tmux: mini_tmux.cpp
 clean:
 	rm -f mini-tmux
 
-# Black-box grading via Docker
-grade: mini-tmux
+# Black-box grading via Docker (compiles inside container for Linux compatibility)
+grade:
 	docker run --rm \
-		-v $(PWD)/mini-tmux:/submission/mini-tmux:ro \
-		mini-tmux-harness grade
+		-v $(PWD):/src:ro \
+		mini-tmux-harness grade-src

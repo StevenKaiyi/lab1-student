@@ -591,13 +591,13 @@ make clean      # 清理编译产物
 
 #### 代码归因：git-ai
 
-[git-ai](https://github.com/qodo-ai/git-ai) 是一个 Git 扩展，能自动追踪每一行代码是人写的还是 AI 生成的。它通过 Git Notes 记录归因信息，不影响你的提交历史。
+[git-ai](https://github.com/git-ai-project/git-ai) 是一个 Git 扩展，能自动追踪每一行代码是人写的还是 AI 生成的。它通过 Git Notes 记录归因信息，不影响你的提交历史。
 
 安装和配置：
 
 ```bash
 # 安装
-curl -fsSL https://raw.githubusercontent.com/qodo-ai/git-ai/main/install.sh | bash
+curl -sSL https://usegitai.com/install.sh | bash
 
 # 在你的仓库中初始化
 cd your-repo

@@ -1,5 +1,7 @@
 # Lab 1: mini-tmux 终端复用器
 
+> Designed by [@Nictheboy](https://github.com/Nictheboy) and [@Cheese-2023](https://github.com/Cheese-2023)
+
 ## 1 热身
 
 ### 1.1 什么是终端复用器

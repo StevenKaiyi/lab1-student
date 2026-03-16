@@ -1,0 +1,17 @@
+name: Autograding
+
+on:
+  repository_dispatch:
+    types: [autograde]
+
+permissions:
+  checks: write
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report score to Classroom
+        run: |
+          echo "::notice title=Autograding complete::Points ${{ github.event.client_payload.points }}/${{ github.event.client_payload.max }}"
+          echo '::notice title=Autograding report::{"totalPoints":${{ github.event.client_payload.points }},"maxPoints":${{ github.event.client_payload.max }}}'

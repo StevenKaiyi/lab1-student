@@ -553,16 +553,14 @@ Probe 通过侧信道报告的信息包括：
 
 ### 4.4 开发工具
 
-项目 Makefile 提供以下辅助命令：
+项目 Makefile 提供以下命令：
 
 ```bash
 make            # 编译生成 ./mini-tmux
 make clean      # 清理编译产物
-make run        # 在 Docker 中编译并运行 mini-tmux（Linux 环境）
-make shell      # 进入 Docker 环境的 shell（可手动测试）
 ```
 
-`make run` 和 `make shell` 让你在 Linux Docker 容器中开发和测试，确保与评测环境一致。如果你在 macOS 上开发，强烈建议使用这两个命令来验证你的实现，因为 PTY 和信号的行为在 macOS 和 Linux 之间存在细微差异。
+请在 Linux x86_64 环境下开发和测试（评测环境为 Ubuntu 24.04）。`helpers/` 中的预编译二进制也是 Linux x86_64 格式。
 
 ### 4.5 测试策略
 

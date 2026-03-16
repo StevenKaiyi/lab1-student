@@ -12,15 +12,6 @@ make
 ./mini-tmux
 ```
 
-## 在 Docker 中开发（推荐）
-
-macOS 用户或想确保与评测环境一致时，使用 Docker：
-
-```bash
-make run      # 在 Docker (Ubuntu 24.04) 中编译并运行 mini-tmux
-make shell    # 进入 Docker 环境的 shell，可手动测试
-```
-
 ## 文件结构
 
 ```

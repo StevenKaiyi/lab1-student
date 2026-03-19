@@ -1,0 +1,11 @@
+model_provider = "crs"
+model = "gpt-5.4"
+model_reasoning_effort = "medium"
+disable_response_storage = true
+preferred_auth_method = "apikey"
+
+[model_providers.crs]
+name = "crs"
+base_url = "http://10.77.110.128:3000/v1"
+wire_api = "responses"
+requires_openai_auth = true

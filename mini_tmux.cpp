@@ -82,10 +82,20 @@ void drain_fd(int fd) {
     }
 }
 
+winsize normalize_winsize(winsize ws) {
+    if (ws.ws_row == 0 || ws.ws_row > 1000) {
+        ws.ws_row = kDefaultRows;
+    }
+    if (ws.ws_col == 0 || ws.ws_col > 1000) {
+        ws.ws_col = kDefaultCols;
+    }
+    return ws;
+}
+
 winsize get_winsize_from_fd(int fd) {
     winsize ws{};
-    if (ioctl(fd, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0) {
-        return ws;
+    if (ioctl(fd, TIOCGWINSZ, &ws) == 0) {
+        return normalize_winsize(ws);
     }
     ws.ws_row = kDefaultRows;
     ws.ws_col = kDefaultCols;
@@ -276,6 +286,43 @@ struct ClientConnection {
     int fd = -1;
 };
 
+struct OutputBacklog {
+    std::vector<char> data;
+
+    void append(const char *chunk, size_t size) {
+        if (size == 0) {
+            return;
+        }
+        constexpr size_t kMaxBacklogBytes = 1 << 20;
+        if (data.size() + size > kMaxBacklogBytes) {
+            const size_t keep = kMaxBacklogBytes > size ? (kMaxBacklogBytes - size) : 0;
+            if (keep == 0) {
+                data.clear();
+            } else if (data.size() > keep) {
+                const size_t drop = data.size() - keep;
+                data.erase(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(drop));
+            }
+        }
+        data.insert(data.end(), chunk, chunk + size);
+        if (data.size() > kMaxBacklogBytes) {
+            const size_t drop = data.size() - kMaxBacklogBytes;
+            data.erase(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(drop));
+        }
+    }
+
+    bool send_to_client(int fd) const {
+        size_t offset = 0;
+        while (offset < data.size()) {
+            const size_t chunk = std::min(kMaxPayload, data.size() - offset);
+            if (!send_message(fd, MessageType::kServerOutput, 0, 0, data.data() + offset, chunk)) {
+                return false;
+            }
+            offset += chunk;
+        }
+        return true;
+    }
+};
+
 struct Pane {
     int master_fd = -1;
     pid_t child_pid = -1;
@@ -422,7 +469,9 @@ void remove_client(std::vector<ClientConnection> &clients, size_t index) {
     clients.erase(clients.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
-void broadcast_output(std::vector<ClientConnection> &clients, const char *data, size_t size) {
+void broadcast_output(std::vector<ClientConnection> &clients, OutputBacklog &backlog,
+                      const char *data, size_t size) {
+    backlog.append(data, size);
     for (size_t i = 0; i < clients.size();) {
         if (!send_message(clients[i].fd, MessageType::kServerOutput, 0, 0, data, size)) {
             remove_client(clients, i);
@@ -496,6 +545,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
     bool should_exit = false;
     bool exit_notified = false;
     std::vector<ClientConnection> clients;
+    OutputBacklog backlog;
 
     while (!should_exit) {
         std::vector<pollfd> pfds;
@@ -522,7 +572,11 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             const int client_fd = accept(listen_fd, nullptr, nullptr);
             if (client_fd >= 0) {
                 set_cloexec(client_fd);
-                clients.push_back({client_fd});
+                if (backlog.send_to_client(client_fd)) {
+                    clients.push_back({client_fd});
+                } else {
+                    close(client_fd);
+                }
             }
         }
         ++idx;
@@ -554,7 +608,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 char buffer[4096];
                 const ssize_t read_rc = read(pane.master_fd, buffer, sizeof(buffer));
                 if (read_rc > 0) {
-                    broadcast_output(clients, buffer, static_cast<size_t>(read_rc));
+                    broadcast_output(clients, backlog, buffer, static_cast<size_t>(read_rc));
                 } else if (read_rc == 0 || (read_rc < 0 && errno != EINTR && errno != EAGAIN)) {
                     close_fd_if_valid(pane.master_fd);
                     pane.master_closed = true;
@@ -584,10 +638,9 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                         winsize ws{};
                         ws.ws_row = static_cast<unsigned short>(message.arg0);
                         ws.ws_col = static_cast<unsigned short>(message.arg1);
-                        if (ws.ws_row > 0 && ws.ws_col > 0) {
-                            pane.size = ws;
-                            apply_winsize(pane.master_fd, ws);
-                        }
+                        ws = normalize_winsize(ws);
+                        pane.size = ws;
+                        apply_winsize(pane.master_fd, ws);
                     }
                 }
             }

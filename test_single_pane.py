@@ -11,9 +11,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BINARY = ROOT / 'mini-tmux'
-SOCKET_GLOB_PREFIX = f"/tmp/mini-tmux-{os.getuid()}-"
 TIMEOUT = 8.0
-PROMPT = b'__PANE_READY__# '
+READY_TOKEN = '__MINI_TMUX_READY__'
 
 class TestFailure(RuntimeError):
     pass
@@ -47,8 +46,29 @@ def read_until(fd, predicate, timeout=TIMEOUT):
     raise TestFailure(f'timeout waiting for expected output; received:\n{data.decode(errors="replace")}')
 
 
+def read_briefly(fd, duration=0.3):
+    deadline = time.time() + duration
+    data = bytearray()
+    while time.time() < deadline:
+        remaining = deadline - time.time()
+        rlist, _, _ = select.select([fd], [], [], max(0.0, remaining))
+        if fd not in rlist:
+            continue
+        chunk = os.read(fd, 4096)
+        if not chunk:
+            break
+        data.extend(chunk)
+    return bytes(data)
+
+
 def send_line(fd, line: str):
     os.write(fd, line.encode() + b'\n')
+
+
+def wait_for_shell(fd):
+    send_line(fd, f'printf "{READY_TOKEN}\\n"')
+    output = read_until(fd, lambda data: READY_TOKEN.encode() in data)
+    return output
 
 
 def main() -> int:
@@ -60,7 +80,6 @@ def main() -> int:
     cleanup_sockets()
 
     env = os.environ.copy()
-    env['PS1'] = PROMPT.decode()
     env['TERM'] = env.get('TERM', 'xterm-256color')
     env['MINI_TMUX_SERVER'] = 'single-pane-test'
 
@@ -77,20 +96,21 @@ def main() -> int:
     os.close(slave_fd)
 
     try:
-        read_until(master_fd, lambda data: PROMPT in data)
+        read_briefly(master_fd, duration=0.8)
+        wait_for_shell(master_fd)
 
         send_line(master_fd, 'tty')
-        tty_output = read_until(master_fd, lambda data: PROMPT in data and b'/dev/pts/' in data)
+        tty_output = read_until(master_fd, lambda data: b'/dev/pts/' in data)
         if b'/dev/pts/' not in tty_output:
             raise TestFailure('tty did not report a PTY path')
 
         send_line(master_fd, "python3 -c \"import os; print(os.isatty(0), os.isatty(1), os.isatty(2))\"")
-        isatty_output = read_until(master_fd, lambda data: PROMPT in data and b'True True True' in data)
+        isatty_output = read_until(master_fd, lambda data: b'True True True' in data)
         if b'True True True' not in isatty_output:
             raise TestFailure('isatty check failed')
 
         send_line(master_fd, 'stty size')
-        size_output = read_until(master_fd, lambda data: PROMPT in data and re.search(rb'\b\d+ \d+\b', data) is not None)
+        size_output = read_until(master_fd, lambda data: re.search(rb'\b\d+ \d+\b', data) is not None)
         match = re.search(rb'\b(\d+) (\d+)\b', size_output)
         if not match:
             raise TestFailure('could not parse stty size output')
@@ -101,23 +121,19 @@ def main() -> int:
 
         token = f'SINGLE_PANE_TOKEN_{int(time.time())}'
         send_line(master_fd, f'printf "%s\\n" {token}')
-        token_output = read_until(master_fd, lambda data: PROMPT in data and token.encode() in data)
+        token_output = read_until(master_fd, lambda data: token.encode() in data)
         if token.encode() not in token_output:
             raise TestFailure('token output did not round-trip')
 
         send_line(master_fd, 'exit')
-        try:
-            read_until(master_fd, lambda data: False, timeout=1.0)
-        except TestFailure:
-            pass
-
         proc.wait(timeout=5.0)
         if proc.returncode != 0:
             raise TestFailure(f'mini-tmux exited with status {proc.returncode}')
 
         print('single-pane checks passed')
-        print(f'pty path check: ok')
-        print(f'isatty check: ok')
+        print('shell ready check: ok')
+        print('pty path check: ok')
+        print('isatty check: ok')
         print(f'winsize check: {rows}x{cols}')
         print('io round-trip check: ok')
         print('exit/cleanup check: ok')

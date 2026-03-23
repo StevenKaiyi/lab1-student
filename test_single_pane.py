@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 BINARY = ROOT / 'mini-tmux'
+FORK_EXIT = ROOT / 'helpers' / 'fork_exit'
 TIMEOUT = 8.0
 READY_TOKEN = '__MINI_TMUX_READY__'
 
@@ -71,6 +72,19 @@ def wait_for_shell(fd):
     return output
 
 
+def assert_no_zombies():
+    proc = subprocess.run(
+        ['ps', '-eo', 'stat='],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    zombie_lines = [line.strip() for line in proc.stdout.splitlines() if 'Z' in line]
+    if zombie_lines:
+        raise TestFailure(f'zombie processes detected: {zombie_lines}')
+
+
 def main() -> int:
     if not BINARY.exists():
         print(f'missing binary: {BINARY}', file=sys.stderr)
@@ -120,10 +134,27 @@ def main() -> int:
             raise TestFailure(f'invalid winsize reported: {rows}x{cols}')
 
         token = f'SINGLE_PANE_TOKEN_{int(time.time())}'
-        send_line(master_fd, f'printf "%s\\n" {token}')
+        send_line(master_fd, f'printf "%s\n" {token}')
         token_output = read_until(master_fd, lambda data: token.encode() in data)
         if token.encode() not in token_output:
             raise TestFailure('token output did not round-trip')
+
+        send_line(master_fd, 'top -b -n 1 | head -n 3')
+        top_output = read_until(master_fd, lambda data: b'load average' in data or b'Tasks:' in data)
+        if b'load average' not in top_output and b'Tasks:' not in top_output:
+            raise TestFailure('top compatibility check failed')
+
+        send_line(master_fd, "vim -Nu NONE -n -es +'silent !printf VIM_OK\\n' +q")
+        vim_output = read_until(master_fd, lambda data: b'VIM_OK' in data)
+        if b'VIM_OK' not in vim_output:
+            raise TestFailure('vim compatibility check failed')
+
+        if not FORK_EXIT.exists():
+            raise TestFailure(f'missing helper: {FORK_EXIT}')
+        send_line(master_fd, f'{FORK_EXIT} /tmp/mini-tmux-unused-sideband.sock single-pane-test 5 >/dev/null 2>&1 || true')
+        read_briefly(master_fd, duration=0.5)
+        time.sleep(0.5)
+        assert_no_zombies()
 
         send_line(master_fd, 'exit')
         proc.wait(timeout=5.0)
@@ -136,13 +167,14 @@ def main() -> int:
         print('isatty check: ok')
         print(f'winsize check: {rows}x{cols}')
         print('io round-trip check: ok')
+        print('top compatibility check: ok')
+        print('vim compatibility check: ok')
+        print('fork_exit/zombie reap check: ok')
         print('exit/cleanup check: ok')
         print()
         print('Future checks to add when features land:')
         print('- run helpers/probe through the pane and validate sideband messages')
         print('- verify SIGWINCH propagation after client terminal resize')
-        print('- verify vim/top compatibility on the PTY path')
-        print('- verify child reap behavior with helpers/fork_exit')
         return 0
     except TestFailure as exc:
         print(f'TEST FAILED: {exc}', file=sys.stderr)

@@ -1,4 +1,4 @@
-# Lab 1: mini-tmux
+﻿# Lab 1: mini-tmux
 
 从零实现一个终端复用器。完整需求见 [handout.md](handout.md)。
 
@@ -10,6 +10,27 @@ make
 
 # 运行
 ./mini-tmux
+```
+
+如果你是在 Windows PowerShell 里从 `\\wsl$` 或 `\\wsl.localhost` 路径打开这个仓库，不要直接运行 `./mini-tmux`。这个文件是 Linux ELF，可执行权属于 WSL，PowerShell 会把它当成需要选择打开程序的文件。
+
+请改用：
+
+```powershell
+./mini-tmux.cmd
+```
+
+如果你明确要跑 PowerShell 脚本本体，也可以：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\mini-tmux.ps1
+```
+
+attach 也一样：
+
+```powershell
+./mini-tmux.cmd attach
+./mini-tmux.cmd attach -r
 ```
 
 ## 文件结构
@@ -34,3 +55,5 @@ make
 推送到 GitHub Classroom 分配的仓库。确保 `make` 能在干净的 Linux 环境中编译成功。
 
 AI 使用记录的要求见 handout.md 4.7 节。
+
+

@@ -1,4 +1,5 @@
-﻿#include <cerrno>
+#include <cerrno>
+#include <cctype>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -363,6 +364,12 @@ struct ServerState {
     std::vector<ClientConnection> clients;
 };
 
+enum class ClientInputMode : uint32_t {
+    kNormal = 1,
+    kPrefix = 2,
+    kCommand = 3,
+};
+
 void close_fd_if_valid(int &fd) {
     if (fd >= 0) {
         close(fd);
@@ -370,6 +377,147 @@ void close_fd_if_valid(int &fd) {
     }
 }
 
+bool write_stdout(const std::string &text) {
+    return write_all(STDOUT_FILENO, text.data(), text.size());
+}
+
+bool redraw_command_prompt(const std::string &buffer) {
+    const std::string prompt = "\r\n:" + buffer;
+    return write_stdout(prompt);
+}
+
+bool clear_command_prompt(const std::string &buffer) {
+    std::string clear = "\r";
+    clear.append(buffer.size() + 2, ' ');
+    clear += "\r";
+    return write_stdout(clear);
+}
+
+bool show_local_status(const std::string &text) {
+    return write_stdout("\r\n" + text + "\r\n");
+}
+
+std::string trim_ascii_whitespace(const std::string &input) {
+    size_t start = 0;
+    while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start])) != 0) {
+        ++start;
+    }
+
+    size_t end = input.size();
+    while (end > start && std::isspace(static_cast<unsigned char>(input[end - 1])) != 0) {
+        --end;
+    }
+    return input.substr(start, end - start);
+}
+
+std::vector<std::string> split_ascii_whitespace(const std::string &input) {
+    std::vector<std::string> tokens;
+    size_t index = 0;
+    while (index < input.size()) {
+        while (index < input.size() && std::isspace(static_cast<unsigned char>(input[index])) != 0) {
+            ++index;
+        }
+        if (index >= input.size()) {
+            break;
+        }
+        size_t next = index;
+        while (next < input.size() && std::isspace(static_cast<unsigned char>(input[next])) == 0) {
+            ++next;
+        }
+        tokens.push_back(input.substr(index, next - index));
+        index = next;
+    }
+    return tokens;
+}
+
+bool parse_non_negative_int(const std::string &text, int &value) {
+    if (text.empty()) {
+        return false;
+    }
+
+    char *end = nullptr;
+    errno = 0;
+    const long parsed = std::strtol(text.c_str(), &end, 10);
+    if (errno != 0 || end == nullptr || *end != '\0' || parsed < 0 || parsed > INT32_MAX) {
+        return false;
+    }
+    value = static_cast<int>(parsed);
+    return true;
+}
+
+std::string format_usage(const std::string &usage) {
+    return "usage: " + usage;
+}
+
+std::string format_error(const std::string &message) {
+    return "error: " + message;
+}
+
+std::string format_ok(const std::string &message) {
+    return "ok: " + message;
+}
+
+std::string handle_client_command(const ClientConnection &client, const std::string &raw_command) {
+    std::string command = trim_ascii_whitespace(raw_command);
+    if (!command.empty() && command.front() == ':') {
+        command.erase(command.begin());
+        command = trim_ascii_whitespace(command);
+    }
+    if (command.empty()) {
+        return format_error("empty command");
+    }
+
+    const std::vector<std::string> tokens = split_ascii_whitespace(command);
+    if (tokens.empty()) {
+        return format_error("empty command");
+    }
+
+    const std::string &name = tokens[0];
+    if (name == "new") {
+        if (tokens.size() != 1) {
+            return format_usage(":new");
+        }
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :new");
+        }
+        return format_ok(":new parsed; pane creation not implemented yet");
+    }
+
+    if (name == "kill") {
+        if (tokens.size() != 2) {
+            return format_usage(":kill <pane_id>");
+        }
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :kill");
+        }
+
+        int pane_id = -1;
+        if (!parse_non_negative_int(tokens[1], pane_id)) {
+            return format_error("pane_id must be a non-negative integer");
+        }
+        if (pane_id != 0) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        return format_ok(":kill 0 parsed; pane removal not implemented yet");
+    }
+
+    if (name == "focus") {
+        if (tokens.size() != 2) {
+            return format_usage(":focus <pane_id>");
+        }
+
+        int pane_id = -1;
+        if (!parse_non_negative_int(tokens[1], pane_id)) {
+            return format_error("pane_id must be a non-negative integer");
+        }
+        if (pane_id != 0) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        return format_ok("pane 0 already selected");
+    }
+
+    return format_error("unknown command '" + name + "'");
+}
 
 bool send_client_hello(int socket_fd, bool read_only) {
     return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, 0, nullptr, 0);
@@ -701,9 +849,10 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                         apply_winsize(server.session.pane.master_fd, ws);
                     }
                 } else if (message.type == MessageType::kClientCommand) {
-                    const char kNotImplemented[] = "command mode not implemented yet\n";
+                    const std::string raw_command(message.payload.begin(), message.payload.end());
+                    const std::string status = handle_client_command(server.clients[client_index], raw_command);
                     if (!send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
-                                      kNotImplemented, sizeof(kNotImplemented) - 1)) {
+                                      status.data(), status.size())) {
                         keep_client = false;
                     }
                 }
@@ -774,7 +923,22 @@ int client_process(int socket_fd, bool read_only) {
         return 1;
     }
 
+    if (!show_local_status(read_only ?
+                           "mini-tmux: attached in read-only mode" :
+                           "mini-tmux: attached")) {
+        terminal_guard.restore();
+        close(sig_pipe[0]);
+        close(sig_pipe[1]);
+        return 1;
+    }
+
     send_resize_to_server(socket_fd);
+
+    constexpr char kPrefixKey = 0x02;
+    constexpr char kEscapeKey = 0x1b;
+    constexpr char kBackspaceKey = 0x7f;
+    ClientInputMode input_mode = ClientInputMode::kNormal;
+    std::string command_buffer;
 
     int exit_code = 0;
     bool done = false;
@@ -799,16 +963,92 @@ int client_process(int socket_fd, bool read_only) {
         if (pfds[2].revents & POLLIN) {
             drain_fd(sig_pipe[0]);
             send_resize_to_server(socket_fd);
+            if (input_mode == ClientInputMode::kCommand && !redraw_command_prompt(command_buffer)) {
+                done = true;
+            }
         }
 
         if (pfds[0].revents & POLLIN) {
             char buffer[4096];
             const ssize_t read_rc = read(STDIN_FILENO, buffer, sizeof(buffer));
             if (read_rc > 0) {
-                if (!read_only) {
-                    if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, buffer,
-                                      static_cast<size_t>(read_rc))) {
-                        done = true;
+                for (ssize_t i = 0; i < read_rc && !done; ++i) {
+                    const char ch = buffer[i];
+                    if (input_mode == ClientInputMode::kCommand) {
+                        if (ch == '\r' || ch == '\n') {
+                            if (!clear_command_prompt(command_buffer)) {
+                                done = true;
+                                break;
+                            }
+                            if (!send_message(socket_fd, MessageType::kClientCommand, 0, 0,
+                                              command_buffer.data(), command_buffer.size())) {
+                                done = true;
+                                break;
+                            }
+                            command_buffer.clear();
+                            input_mode = ClientInputMode::kNormal;
+                        } else if (ch == kEscapeKey || ch == 0x03) {
+                            if (!clear_command_prompt(command_buffer)) {
+                                done = true;
+                                break;
+                            }
+                            command_buffer.clear();
+                            input_mode = ClientInputMode::kNormal;
+                        } else if (ch == kBackspaceKey || ch == '\b') {
+                            if (!command_buffer.empty()) {
+                                command_buffer.pop_back();
+                                if (!clear_command_prompt(command_buffer + " ") ||
+                                    !redraw_command_prompt(command_buffer)) {
+                                    done = true;
+                                    break;
+                                }
+                            }
+                        } else if (ch >= 32 && ch <= 126) {
+                            command_buffer.push_back(ch);
+                            if (!redraw_command_prompt(command_buffer)) {
+                                done = true;
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (input_mode == ClientInputMode::kPrefix) {
+                        if (ch == ':') {
+                            input_mode = ClientInputMode::kCommand;
+                            command_buffer.clear();
+                            if (!redraw_command_prompt(command_buffer)) {
+                                done = true;
+                                break;
+                            }
+                        } else if (!read_only && ch == kPrefixKey) {
+                            if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
+                                done = true;
+                                break;
+                            }
+                            input_mode = ClientInputMode::kNormal;
+                        } else {
+                            input_mode = ClientInputMode::kNormal;
+                            if (!show_local_status(read_only ?
+                                                   "read-only: unsupported prefix command" :
+                                                   "unsupported prefix command")) {
+                                done = true;
+                                break;
+                            }
+                        }
+                        continue;
+                    }
+
+                    if (ch == kPrefixKey) {
+                        input_mode = ClientInputMode::kPrefix;
+                        continue;
+                    }
+
+                    if (!read_only) {
+                        if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
+                            done = true;
+                            break;
+                        }
                     }
                 }
             } else if (read_rc == 0) {
@@ -830,6 +1070,10 @@ int client_process(int socket_fd, bool read_only) {
                     !write_all(STDOUT_FILENO, message.payload.data(), message.payload.size())) {
                     done = true;
                 }
+                if (!done && input_mode == ClientInputMode::kCommand &&
+                    !redraw_command_prompt(command_buffer)) {
+                    done = true;
+                }
             } else if (message.type == MessageType::kServerExit) {
                 exit_code = message.arg0;
                 done = true;
@@ -838,6 +1082,7 @@ int client_process(int socket_fd, bool read_only) {
     }
 
     terminal_guard.restore();
+    show_local_status("mini-tmux: detached");
     close(sig_pipe[0]);
     close(sig_pipe[1]);
     return exit_code;

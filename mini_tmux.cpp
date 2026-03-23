@@ -203,10 +203,14 @@ struct MessageHeader {
 static_assert(sizeof(MessageHeader) == 16, "unexpected message header size");
 
 enum class MessageType : uint32_t {
-    kClientInput = 1,
-    kClientResize = 2,
-    kServerOutput = 3,
-    kServerExit = 4,
+    kClientHello = 1,
+    kClientInput = 2,
+    kClientResize = 3,
+    kClientCommand = 4,
+    kServerOutput = 5,
+    kServerExit = 6,
+    kServerRedraw = 7,
+    kServerStatus = 8,
 };
 
 struct Message {
@@ -284,6 +288,7 @@ bool recv_message(int fd, Message &message) {
 
 struct ClientConnection {
     int fd = -1;
+    bool read_only = false;
 };
 
 struct OutputBacklog {
@@ -333,11 +338,54 @@ struct Pane {
     winsize size{};
 };
 
+enum class PaneState : uint32_t {
+    kCreated = 1,
+    kRunning = 2,
+    kExited = 3,
+    kReaped = 4,
+    kDestroyed = 5,
+};
+
+struct SessionState {
+    Pane pane{};
+    PaneState pane_state = PaneState::kCreated;
+    OutputBacklog backlog;
+};
+
+struct ServerState {
+    std::string socket_path;
+    int listen_fd = -1;
+    int sigchld_read_fd = -1;
+    int sigchld_write_fd = -1;
+    bool should_exit = false;
+    bool exit_notified = false;
+    SessionState session{};
+    std::vector<ClientConnection> clients;
+};
+
 void close_fd_if_valid(int &fd) {
     if (fd >= 0) {
         close(fd);
         fd = -1;
     }
+}
+
+
+bool send_client_hello(int socket_fd, bool read_only) {
+    return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, 0, nullptr, 0);
+}
+
+bool recv_client_hello(int socket_fd, bool &read_only) {
+    Message message;
+    if (!recv_message(socket_fd, message)) {
+        return false;
+    }
+    if (message.type != MessageType::kClientHello) {
+        errno = EPROTO;
+        return false;
+    }
+    read_only = message.arg0 != 0;
+    return true;
 }
 
 bool apply_winsize(int master_fd, const winsize &ws) {
@@ -469,22 +517,21 @@ void remove_client(std::vector<ClientConnection> &clients, size_t index) {
     clients.erase(clients.begin() + static_cast<std::ptrdiff_t>(index));
 }
 
-void broadcast_output(std::vector<ClientConnection> &clients, OutputBacklog &backlog,
-                      const char *data, size_t size) {
-    backlog.append(data, size);
-    for (size_t i = 0; i < clients.size();) {
-        if (!send_message(clients[i].fd, MessageType::kServerOutput, 0, 0, data, size)) {
-            remove_client(clients, i);
+void broadcast_output(ServerState &server, const char *data, size_t size) {
+    server.session.backlog.append(data, size);
+    for (size_t i = 0; i < server.clients.size();) {
+        if (!send_message(server.clients[i].fd, MessageType::kServerOutput, 0, 0, data, size)) {
+            remove_client(server.clients, i);
             continue;
         }
         ++i;
     }
 }
 
-void notify_pane_exit(std::vector<ClientConnection> &clients, int exit_code, int exit_signal) {
-    for (size_t i = 0; i < clients.size();) {
-        if (!send_message(clients[i].fd, MessageType::kServerExit, exit_code, exit_signal, nullptr, 0)) {
-            remove_client(clients, i);
+void notify_pane_exit(ServerState &server, int exit_code, int exit_signal) {
+    for (size_t i = 0; i < server.clients.size();) {
+        if (!send_message(server.clients[i].fd, MessageType::kServerExit, exit_code, exit_signal, nullptr, 0)) {
+            remove_client(server.clients, i);
             continue;
         }
         ++i;
@@ -507,16 +554,21 @@ void redirect_stdio_to_devnull() {
 int server_process(const std::string &socket_path, const winsize &initial_size) {
     ignore_sigpipe();
 
+    ServerState server{};
+    server.socket_path = socket_path;
+
     int sig_pipe[2] = {-1, -1};
     if (pipe(sig_pipe) != 0) {
         perr("pipe(SIGCHLD)");
         return 1;
     }
-    set_cloexec(sig_pipe[0]);
-    set_cloexec(sig_pipe[1]);
-    set_nonblock(sig_pipe[0]);
-    set_nonblock(sig_pipe[1]);
-    g_server_signal_fd = sig_pipe[1];
+    server.sigchld_read_fd = sig_pipe[0];
+    server.sigchld_write_fd = sig_pipe[1];
+    set_cloexec(server.sigchld_read_fd);
+    set_cloexec(server.sigchld_write_fd);
+    set_nonblock(server.sigchld_read_fd);
+    set_nonblock(server.sigchld_write_fd);
+    g_server_signal_fd = server.sigchld_write_fd;
 
     struct sigaction sa {};
     sa.sa_handler = server_sigchld_handler;
@@ -527,34 +579,29 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         return 1;
     }
 
-    Pane pane{};
-    if (!spawn_shell_pane(pane, initial_size)) {
+    if (!spawn_shell_pane(server.session.pane, initial_size)) {
         perr("spawn pane");
         return 1;
     }
+    server.session.pane_state = PaneState::kRunning;
 
-    const int listen_fd = create_listen_socket(socket_path);
-    if (listen_fd < 0) {
+    server.listen_fd = create_listen_socket(socket_path);
+    if (server.listen_fd < 0) {
         perr("listen socket");
-        kill(pane.child_pid, SIGHUP);
-        waitpid(pane.child_pid, nullptr, 0);
-        close_fd_if_valid(pane.master_fd);
+        kill(server.session.pane.child_pid, SIGHUP);
+        waitpid(server.session.pane.child_pid, nullptr, 0);
+        close_fd_if_valid(server.session.pane.master_fd);
         return 1;
     }
 
-    bool should_exit = false;
-    bool exit_notified = false;
-    std::vector<ClientConnection> clients;
-    OutputBacklog backlog;
-
-    while (!should_exit) {
+    while (!server.should_exit) {
         std::vector<pollfd> pfds;
-        pfds.push_back({listen_fd, POLLIN, 0});
-        pfds.push_back({sig_pipe[0], POLLIN, 0});
-        if (pane.master_fd >= 0) {
-            pfds.push_back({pane.master_fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
+        pfds.push_back({server.listen_fd, POLLIN, 0});
+        pfds.push_back({server.sigchld_read_fd, POLLIN, 0});
+        if (server.session.pane.master_fd >= 0) {
+            pfds.push_back({server.session.pane.master_fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
         }
-        for (const ClientConnection &client : clients) {
+        for (const ClientConnection &client : server.clients) {
             pfds.push_back({client.fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
         }
 
@@ -569,11 +616,14 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
 
         size_t idx = 0;
         if (pfds[idx].revents & POLLIN) {
-            const int client_fd = accept(listen_fd, nullptr, nullptr);
+            const int client_fd = accept(server.listen_fd, nullptr, nullptr);
             if (client_fd >= 0) {
                 set_cloexec(client_fd);
-                if (backlog.send_to_client(client_fd)) {
-                    clients.push_back({client_fd});
+                bool read_only = false;
+                if (!recv_client_hello(client_fd, read_only)) {
+                    close(client_fd);
+                } else if (server.session.backlog.send_to_client(client_fd)) {
+                    server.clients.push_back({client_fd, read_only});
                 } else {
                     close(client_fd);
                 }
@@ -582,71 +632,85 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         ++idx;
 
         if (pfds[idx].revents & POLLIN) {
-            drain_fd(sig_pipe[0]);
+            drain_fd(server.sigchld_read_fd);
             while (true) {
                 int status = 0;
                 const pid_t pid = waitpid(-1, &status, WNOHANG);
                 if (pid <= 0) {
                     break;
                 }
-                if (pid == pane.child_pid) {
-                    pane.child_reaped = true;
+                if (pid == server.session.pane.child_pid) {
+                    server.session.pane.child_reaped = true;
+                    server.session.pane_state = PaneState::kReaped;
                     if (WIFEXITED(status)) {
-                        pane.exit_code = WEXITSTATUS(status);
-                        pane.exit_signal = 0;
+                        server.session.pane.exit_code = WEXITSTATUS(status);
+                        server.session.pane.exit_signal = 0;
                     } else if (WIFSIGNALED(status)) {
-                        pane.exit_code = 128 + WTERMSIG(status);
-                        pane.exit_signal = WTERMSIG(status);
+                        server.session.pane.exit_code = 128 + WTERMSIG(status);
+                        server.session.pane.exit_signal = WTERMSIG(status);
                     }
                 }
             }
         }
         ++idx;
 
-        if (pane.master_fd >= 0) {
+        if (server.session.pane.master_fd >= 0) {
             if (pfds[idx].revents & (POLLIN | POLLHUP | POLLERR)) {
                 char buffer[4096];
-                const ssize_t read_rc = read(pane.master_fd, buffer, sizeof(buffer));
+                const ssize_t read_rc = read(server.session.pane.master_fd, buffer, sizeof(buffer));
                 if (read_rc > 0) {
-                    broadcast_output(clients, backlog, buffer, static_cast<size_t>(read_rc));
+                    broadcast_output(server, buffer, static_cast<size_t>(read_rc));
                 } else if (read_rc == 0 || (read_rc < 0 && errno != EINTR && errno != EAGAIN)) {
-                    close_fd_if_valid(pane.master_fd);
-                    pane.master_closed = true;
+                    close_fd_if_valid(server.session.pane.master_fd);
+                    server.session.pane.master_closed = true;
+                    if (server.session.pane_state == PaneState::kRunning) {
+                        server.session.pane_state = PaneState::kExited;
+                    }
                 }
             }
             ++idx;
         }
 
-        for (size_t client_index = 0; client_index < clients.size();) {
+        for (size_t client_index = 0; client_index < server.clients.size();) {
             const short revents = pfds[idx].revents;
             bool keep_client = true;
             if (revents & (POLLHUP | POLLERR)) {
                 keep_client = false;
             } else if (revents & POLLIN) {
                 Message message;
-                if (!recv_message(clients[client_index].fd, message)) {
+                if (!recv_message(server.clients[client_index].fd, message)) {
                     keep_client = false;
                 } else if (message.type == MessageType::kClientInput) {
-                    if (pane.master_fd >= 0 && !message.payload.empty()) {
-                        if (!write_all(pane.master_fd, message.payload.data(), message.payload.size())) {
-                            close_fd_if_valid(pane.master_fd);
-                            pane.master_closed = true;
+                    if (!server.clients[client_index].read_only &&
+                        server.session.pane.master_fd >= 0 && !message.payload.empty()) {
+                        if (!write_all(server.session.pane.master_fd, message.payload.data(), message.payload.size())) {
+                            close_fd_if_valid(server.session.pane.master_fd);
+                            server.session.pane.master_closed = true;
+                            if (server.session.pane_state == PaneState::kRunning) {
+                                server.session.pane_state = PaneState::kExited;
+                            }
                         }
                     }
                 } else if (message.type == MessageType::kClientResize) {
-                    if (pane.master_fd >= 0) {
+                    if (server.session.pane.master_fd >= 0) {
                         winsize ws{};
                         ws.ws_row = static_cast<unsigned short>(message.arg0);
                         ws.ws_col = static_cast<unsigned short>(message.arg1);
                         ws = normalize_winsize(ws);
-                        pane.size = ws;
-                        apply_winsize(pane.master_fd, ws);
+                        server.session.pane.size = ws;
+                        apply_winsize(server.session.pane.master_fd, ws);
+                    }
+                } else if (message.type == MessageType::kClientCommand) {
+                    const char kNotImplemented[] = "command mode not implemented yet\n";
+                    if (!send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
+                                      kNotImplemented, sizeof(kNotImplemented) - 1)) {
+                        keep_client = false;
                     }
                 }
             }
 
             if (!keep_client) {
-                remove_client(clients, client_index);
+                remove_client(server.clients, client_index);
                 ++idx;
                 continue;
             }
@@ -654,28 +718,35 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             ++idx;
         }
 
-        if (pane.child_reaped && (pane.master_fd < 0 || pane.master_closed)) {
-            if (!exit_notified) {
-                notify_pane_exit(clients, pane.exit_code, pane.exit_signal);
-                exit_notified = true;
+        if (server.session.pane.child_reaped &&
+            (server.session.pane.master_fd < 0 || server.session.pane.master_closed)) {
+            if (!server.exit_notified) {
+                notify_pane_exit(server, server.session.pane.exit_code, server.session.pane.exit_signal);
+                server.exit_notified = true;
             }
-            should_exit = true;
+            server.should_exit = true;
         }
     }
 
-    for (ClientConnection &client : clients) {
+    for (ClientConnection &client : server.clients) {
         close_fd_if_valid(client.fd);
     }
-    close_fd_if_valid(pane.master_fd);
-    close(sig_pipe[0]);
-    close(sig_pipe[1]);
-    close(listen_fd);
+    close_fd_if_valid(server.session.pane.master_fd);
+    close_fd_if_valid(server.sigchld_read_fd);
+    close_fd_if_valid(server.sigchld_write_fd);
+    close_fd_if_valid(server.listen_fd);
+    server.session.pane_state = PaneState::kDestroyed;
     unlink(socket_path.c_str());
     return 0;
 }
 
-int client_process(int socket_fd) {
+int client_process(int socket_fd, bool read_only) {
     ignore_sigpipe();
+
+    if (!send_client_hello(socket_fd, read_only)) {
+        perr("send(client hello)");
+        return 1;
+    }
 
     int sig_pipe[2] = {-1, -1};
     if (pipe(sig_pipe) != 0) {
@@ -734,9 +805,11 @@ int client_process(int socket_fd) {
             char buffer[4096];
             const ssize_t read_rc = read(STDIN_FILENO, buffer, sizeof(buffer));
             if (read_rc > 0) {
-                if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, buffer,
-                                  static_cast<size_t>(read_rc))) {
-                    done = true;
+                if (!read_only) {
+                    if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, buffer,
+                                      static_cast<size_t>(read_rc))) {
+                        done = true;
+                    }
                 }
             } else if (read_rc == 0) {
                 done = true;
@@ -751,7 +824,8 @@ int client_process(int socket_fd) {
             Message message;
             if (!recv_message(socket_fd, message)) {
                 done = true;
-            } else if (message.type == MessageType::kServerOutput) {
+            } else if (message.type == MessageType::kServerOutput ||
+                       message.type == MessageType::kServerStatus) {
                 if (!message.payload.empty() &&
                     !write_all(STDOUT_FILENO, message.payload.data(), message.payload.size())) {
                     done = true;
@@ -781,7 +855,7 @@ bool wait_for_server(const std::string &socket_path, int attempts, useconds_t sl
     return false;
 }
 
-int start_server_and_attach(const std::string &socket_path) {
+int start_server_and_attach(const std::string &socket_path, bool read_only) {
     const winsize initial_size = get_winsize_from_fd(STDIN_FILENO);
 
     const pid_t pid = fork();
@@ -809,24 +883,24 @@ int start_server_and_attach(const std::string &socket_path) {
         perr("connect(server)");
         return 1;
     }
-    const int rc = client_process(socket_fd);
+    const int rc = client_process(socket_fd, read_only);
     close(socket_fd);
     return rc;
 }
 
-int attach_to_existing_server(const std::string &socket_path) {
+int attach_to_existing_server(const std::string &socket_path, bool read_only) {
     const int socket_fd = connect_to_server(socket_path);
     if (socket_fd < 0) {
         perr("attach");
         return 1;
     }
-    const int rc = client_process(socket_fd);
+    const int rc = client_process(socket_fd, read_only);
     close(socket_fd);
     return rc;
 }
 
 void print_usage(const char *argv0) {
-    std::cerr << "Usage: " << argv0 << " [attach]\n";
+    std::cerr << "Usage: " << argv0 << " [attach [-r]]\n";
 }
 
 }  // namespace
@@ -838,13 +912,17 @@ int main(int argc, char **argv) {
         const int existing_fd = connect_to_server(socket_path);
         if (existing_fd >= 0) {
             close(existing_fd);
-            return attach_to_existing_server(socket_path);
+            return attach_to_existing_server(socket_path, false);
         }
-        return start_server_and_attach(socket_path);
+        return start_server_and_attach(socket_path, false);
     }
 
     if (argc == 2 && std::string(argv[1]) == "attach") {
-        return attach_to_existing_server(socket_path);
+        return attach_to_existing_server(socket_path, false);
+    }
+
+    if (argc == 3 && std::string(argv[1]) == "attach" && std::string(argv[2]) == "-r") {
+        return attach_to_existing_server(socket_path, true);
     }
 
     print_usage(argv[0]);

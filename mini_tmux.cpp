@@ -401,6 +401,17 @@ struct ClientPaneBuffer {
     int pane_id = -1;
     std::vector<std::string> lines;
     std::string current_line;
+    size_t cursor_col = 0;
+
+    enum class EscapeState : uint32_t {
+        kText = 1,
+        kEscape = 2,
+        kCsi = 3,
+        kOsc = 4,
+        kOscEscape = 5,
+    };
+
+    EscapeState escape_state = EscapeState::kText;
 };
 
 struct ClientViewState {
@@ -418,6 +429,14 @@ void close_fd_if_valid(int &fd) {
 
 bool write_stdout(const std::string &text) {
     return write_all(STDOUT_FILENO, text.data(), text.size());
+}
+
+bool enter_alternate_screen() {
+    return write_stdout("\x1b[?1049h\x1b[H");
+}
+
+bool leave_alternate_screen() {
+    return write_stdout("\x1b[?1049l");
 }
 
 bool redraw_command_prompt(const std::string &buffer) {
@@ -447,31 +466,127 @@ ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
     return &view.buffers.back();
 }
 
+void trim_client_buffer_lines(ClientPaneBuffer &buffer) {
+    constexpr size_t kMaxBufferedLines = 200;
+    if (buffer.lines.size() > kMaxBufferedLines) {
+        buffer.lines.erase(buffer.lines.begin(),
+                           buffer.lines.begin() + static_cast<std::ptrdiff_t>(buffer.lines.size() - kMaxBufferedLines));
+    }
+}
+
+void append_printable_char(ClientPaneBuffer &buffer, char ch) {
+    if (buffer.cursor_col < buffer.current_line.size()) {
+        buffer.current_line[buffer.cursor_col] = ch;
+    } else {
+        while (buffer.current_line.size() < buffer.cursor_col) {
+            buffer.current_line.push_back(' ');
+        }
+        buffer.current_line.push_back(ch);
+    }
+    ++buffer.cursor_col;
+}
+
+void append_spaces(ClientPaneBuffer &buffer, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        append_printable_char(buffer, ' ');
+    }
+}
+
+void handle_backspace(ClientPaneBuffer &buffer) {
+    if (buffer.cursor_col == 0 || buffer.current_line.empty()) {
+        return;
+    }
+    const size_t erase_at = buffer.cursor_col - 1;
+    if (erase_at < buffer.current_line.size()) {
+        buffer.current_line.erase(buffer.current_line.begin() + static_cast<std::ptrdiff_t>(erase_at));
+    }
+    --buffer.cursor_col;
+}
+
+void handle_newline(ClientPaneBuffer &buffer) {
+    buffer.lines.push_back(buffer.current_line);
+    buffer.current_line.clear();
+    buffer.cursor_col = 0;
+    trim_client_buffer_lines(buffer);
+}
+
+void handle_csi_final(ClientPaneBuffer &buffer, char final_byte) {
+    if (final_byte == 'K') {
+        if (buffer.cursor_col < buffer.current_line.size()) {
+            buffer.current_line.erase(static_cast<std::string::size_type>(buffer.cursor_col));
+        }
+    } else if (final_byte == 'D') {
+        if (buffer.cursor_col > 0) {
+            --buffer.cursor_col;
+        }
+    } else if (final_byte == 'C') {
+        if (buffer.cursor_col < buffer.current_line.size()) {
+            ++buffer.cursor_col;
+        }
+    }
+}
+
 void append_client_output(ClientViewState &view, int pane_id, const std::string &chunk) {
     ClientPaneBuffer *buffer = find_client_buffer(view, pane_id);
-    for (char ch : chunk) {
-        if (ch == '\r') {
-            continue;
+    for (unsigned char uch : chunk) {
+        const char ch = static_cast<char>(uch);
+        switch (buffer->escape_state) {
+            case ClientPaneBuffer::EscapeState::kText:
+                if (ch == '\x1b') {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kEscape;
+                    continue;
+                }
+                if (ch == '\r') {
+                    buffer->current_line.clear();
+                    buffer->cursor_col = 0;
+                    continue;
+                }
+                if (ch == '\n') {
+                    handle_newline(*buffer);
+                    continue;
+                }
+                if (ch == '\b' || ch == 127) {
+                    handle_backspace(*buffer);
+                    continue;
+                }
+                if (ch == '\t') {
+                    append_spaces(*buffer, 4);
+                    continue;
+                }
+                if (uch < 32) {
+                    continue;
+                }
+                append_printable_char(*buffer, ch);
+                continue;
+            case ClientPaneBuffer::EscapeState::kEscape:
+                if (ch == '[') {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kCsi;
+                } else if (ch == ']') {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kOsc;
+                } else {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                }
+                continue;
+            case ClientPaneBuffer::EscapeState::kCsi:
+                if (ch >= 0x40 && ch <= 0x7e) {
+                    handle_csi_final(*buffer, ch);
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                }
+                continue;
+            case ClientPaneBuffer::EscapeState::kOsc:
+                if (ch == '\a') {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                } else if (ch == '\x1b') {
+                    buffer->escape_state = ClientPaneBuffer::EscapeState::kOscEscape;
+                }
+                continue;
+            case ClientPaneBuffer::EscapeState::kOscEscape:
+                buffer->escape_state =
+                    ch == '\\' ? ClientPaneBuffer::EscapeState::kText : ClientPaneBuffer::EscapeState::kOsc;
+                continue;
         }
-        if (ch == '\n') {
-            buffer->lines.push_back(buffer->current_line);
-            buffer->current_line.clear();
-            continue;
-        }
-        if (ch == '\t') {
-            buffer->current_line += "    ";
-            continue;
-        }
-        if (static_cast<unsigned char>(ch) < 32 || ch == 127) {
-            continue;
-        }
-        buffer->current_line.push_back(ch);
     }
-    constexpr size_t kMaxBufferedLines = 200;
-    if (buffer->lines.size() > kMaxBufferedLines) {
-        buffer->lines.erase(buffer->lines.begin(),
-                            buffer->lines.begin() + static_cast<std::ptrdiff_t>(buffer->lines.size() - kMaxBufferedLines));
-    }
+    trim_client_buffer_lines(*buffer);
 }
 
 std::vector<PaneLayout> parse_redraw_layout(const std::string &payload, int focused_pane_id) {
@@ -521,9 +636,18 @@ std::string fit_to_width(const std::string &input, unsigned short width) {
     return input + std::string(width - input.size(), ' ');
 }
 
+bool use_structured_client_render(const ClientViewState &view) {
+    return view.layout.size() > 1;
+}
+
 bool render_client_view(const ClientViewState &view, const std::string &command_buffer,
                         ClientInputMode input_mode) {
     std::string frame = "\x1b[?25l\x1b[H\x1b[2J";
+    int screen_row = 1;
+    int cursor_row = 1;
+    int cursor_col = 1;
+    bool cursor_positioned = false;
+
     for (size_t i = 0; i < view.layout.size(); ++i) {
         const PaneLayout &pane = view.layout[i];
         const ClientPaneBuffer *buffer = nullptr;
@@ -533,23 +657,47 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
                 break;
             }
         }
+
         std::string header = "Pane " + std::to_string(pane.pane_id);
         if (pane.focused) {
             header += " [active]";
         }
         frame += fit_to_width(header, pane.cols) + "\r\n";
+        const int header_row = screen_row;
+        ++screen_row;
+
         std::vector<std::string> visible_lines;
         if (buffer != nullptr) {
             visible_lines = buffer->lines;
-            if (!buffer->current_line.empty()) {
-                visible_lines.push_back(buffer->current_line);
-            }
+            visible_lines.push_back(buffer->current_line);
         }
         const int body_rows = std::max<int>(0, static_cast<int>(pane.rows) - 1);
         int start = static_cast<int>(visible_lines.size()) - body_rows;
         if (start < 0) {
             start = 0;
         }
+
+        if (pane.focused) {
+            cursor_positioned = true;
+            if (body_rows > 0) {
+                const int current_line_index = std::max<int>(0, static_cast<int>(visible_lines.size()) - 1);
+                int cursor_offset = current_line_index - start;
+                if (cursor_offset < 0) {
+                    cursor_offset = 0;
+                }
+                if (cursor_offset >= body_rows) {
+                    cursor_offset = body_rows - 1;
+                }
+                cursor_row = header_row + 1 + cursor_offset;
+                const size_t raw_col = buffer != nullptr ? buffer->cursor_col : 0;
+                const unsigned short max_col = pane.cols == 0 ? 1 : pane.cols;
+                cursor_col = 1 + static_cast<int>(std::min<size_t>(raw_col, max_col - 1));
+            } else {
+                cursor_row = header_row;
+                cursor_col = 1;
+            }
+        }
+
         for (int row = 0; row < body_rows; ++row) {
             std::string line;
             const int source = start + row;
@@ -557,13 +705,20 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
                 line = visible_lines[source];
             }
             frame += fit_to_width(line, pane.cols) + "\r\n";
+            ++screen_row;
         }
         if (i + 1 != view.layout.size()) {
             frame += fit_to_width(std::string(pane.cols, '-'), pane.cols) + "\r\n";
+            ++screen_row;
         }
     }
+
     if (input_mode == ClientInputMode::kCommand) {
-        frame += ":" + command_buffer;
+        frame += "\x1b[999;1H:" + command_buffer;
+    } else if (cursor_positioned) {
+        frame += "\x1b[" + std::to_string(cursor_row) + ";" + std::to_string(cursor_col) + "H";
+    } else {
+        frame += "\x1b[H";
     }
     frame += "\x1b[?25h";
     return write_stdout(frame);
@@ -739,6 +894,56 @@ int choose_focus_pane_id(const SessionState &session, int skip_pane_id) {
         }
     }
     return -1;
+}
+
+std::vector<int> collect_live_pane_ids(const SessionState &session) {
+    std::vector<int> pane_ids;
+    for (const PaneSlot &slot : session.panes) {
+        if (slot.state != PaneState::kDestroyed) {
+            pane_ids.push_back(slot.pane_id);
+        }
+    }
+    return pane_ids;
+}
+
+int choose_adjacent_focus_pane_id(const SessionState &session, int direction) {
+    const std::vector<int> pane_ids = collect_live_pane_ids(session);
+    if (pane_ids.empty()) {
+        return -1;
+    }
+    if (direction == 0) {
+        return pane_ids.front();
+    }
+
+    size_t focused_index = 0;
+    bool found = false;
+    for (size_t i = 0; i < pane_ids.size(); ++i) {
+        if (pane_ids[i] == session.focused_pane_id) {
+            focused_index = i;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        return pane_ids.front();
+    }
+
+    const size_t pane_count = pane_ids.size();
+    if (direction > 0) {
+        return pane_ids[(focused_index + 1) % pane_count];
+    }
+    return pane_ids[(focused_index + pane_count - 1) % pane_count];
+}
+
+std::string focus_pane(SessionState &session, int pane_id) {
+    if (find_pane_slot(session, pane_id) == nullptr) {
+        return format_error("pane " + std::to_string(pane_id) + " does not exist");
+    }
+    if (session.focused_pane_id == pane_id) {
+        return format_ok("pane " + std::to_string(pane_id) + " already selected");
+    }
+    session.focused_pane_id = pane_id;
+    return format_ok("focused pane " + std::to_string(pane_id));
 }
 
 void maybe_repair_focus(SessionState &session) {
@@ -920,19 +1125,30 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         if (tokens.size() != 2) {
             return format_usage(":focus <pane_id>");
         }
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :focus");
+        }
 
         int pane_id = -1;
         if (!parse_non_negative_int(tokens[1], pane_id)) {
             return format_error("pane_id must be a non-negative integer");
         }
-        if (find_pane_slot(server.session, pane_id) == nullptr) {
-            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        return focus_pane(server.session, pane_id);
+    }
+
+    if (name == "next" || name == "prev") {
+        if (tokens.size() != 1) {
+            return format_usage(name == "next" ? ":next" : ":prev");
         }
-        if (server.session.focused_pane_id == pane_id) {
-            return format_ok("pane " + std::to_string(pane_id) + " already selected");
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :" + name);
         }
-        server.session.focused_pane_id = pane_id;
-        return format_ok("focused pane " + std::to_string(pane_id));
+
+        const int pane_id = choose_adjacent_focus_pane_id(server.session, name == "next" ? 1 : -1);
+        if (pane_id < 0) {
+            return format_error("no panes available");
+        }
+        return focus_pane(server.session, pane_id);
     }
 
     return format_error("unknown command '" + name + "'");
@@ -1325,6 +1541,26 @@ int client_process(int socket_fd, bool read_only) {
     ClientInputMode input_mode = ClientInputMode::kNormal;
     std::string command_buffer;
     ClientViewState view_state{};
+    bool alternate_screen_active = false;
+
+    auto ensure_render_surface = [&]() -> bool {
+        if (!use_structured_client_render(view_state)) {
+            if (alternate_screen_active) {
+                if (!leave_alternate_screen()) {
+                    return false;
+                }
+                alternate_screen_active = false;
+            }
+            return true;
+        }
+        if (!alternate_screen_active) {
+            if (!enter_alternate_screen()) {
+                return false;
+            }
+            alternate_screen_active = true;
+        }
+        return true;
+    };
 
     int exit_code = 0;
     bool done = false;
@@ -1349,8 +1585,11 @@ int client_process(int socket_fd, bool read_only) {
         if (pfds[2].revents & POLLIN) {
             drain_fd(sig_pipe[0]);
             send_resize_to_server(socket_fd);
-            if (!render_client_view(view_state, command_buffer, input_mode)) {
-                done = true;
+            if (use_structured_client_render(view_state)) {
+                if (!ensure_render_surface() ||
+                    !render_client_view(view_state, command_buffer, input_mode)) {
+                    done = true;
+                }
             }
         }
 
@@ -1383,14 +1622,26 @@ int client_process(int socket_fd, bool read_only) {
                         } else if (ch == kBackspaceKey || ch == '\b') {
                             if (!command_buffer.empty()) {
                                 command_buffer.pop_back();
-                                if (!render_client_view(view_state, command_buffer, input_mode)) {
+                                if (use_structured_client_render(view_state)) {
+                                    if (!ensure_render_surface() ||
+                                        !render_client_view(view_state, command_buffer, input_mode)) {
+                                        done = true;
+                                        break;
+                                    }
+                                } else if (!redraw_command_prompt(command_buffer)) {
                                     done = true;
                                     break;
                                 }
                             }
                         } else if (ch >= 32 && ch <= 126) {
                             command_buffer.push_back(ch);
-                            if (!render_client_view(view_state, command_buffer, input_mode)) {
+                            if (use_structured_client_render(view_state)) {
+                                if (!ensure_render_surface() ||
+                                    !render_client_view(view_state, command_buffer, input_mode)) {
+                                    done = true;
+                                    break;
+                                }
+                            } else if (!redraw_command_prompt(command_buffer)) {
                                 done = true;
                                 break;
                             }
@@ -1402,10 +1653,31 @@ int client_process(int socket_fd, bool read_only) {
                         if (ch == ':') {
                             input_mode = ClientInputMode::kCommand;
                             command_buffer.clear();
-                            if (!render_client_view(view_state, command_buffer, input_mode)) {
+                            if (use_structured_client_render(view_state)) {
+                                if (!render_client_view(view_state, command_buffer, input_mode)) {
+                                    done = true;
+                                    break;
+                                }
+                            } else if (!redraw_command_prompt(command_buffer)) {
                                 done = true;
                                 break;
                             }
+                        } else if (ch == 'd') {
+                            input_mode = ClientInputMode::kNormal;
+                            done = true;
+                        } else if (ch == 'n' || ch == 'p') {
+                            const std::string command = ch == 'n' ? "next" : "prev";
+                            if (!read_only) {
+                                if (!send_message(socket_fd, MessageType::kClientCommand, 0, 0,
+                                                  command.data(), command.size())) {
+                                    done = true;
+                                    break;
+                                }
+                            } else if (!show_local_status("read-only clients cannot switch focus")) {
+                                done = true;
+                                break;
+                            }
+                            input_mode = ClientInputMode::kNormal;
                         } else if (!read_only && ch == kPrefixKey) {
                             if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
                                 done = true;
@@ -1453,14 +1725,33 @@ int client_process(int socket_fd, bool read_only) {
                        message.type == MessageType::kServerStatus) {
                 const std::string chunk(message.payload.begin(), message.payload.end());
                 append_client_output(view_state, message.arg0, chunk);
-                if (!render_client_view(view_state, command_buffer, input_mode)) {
+                if (message.type == MessageType::kServerStatus) {
+                    if (use_structured_client_render(view_state)) {
+                        if (!ensure_render_surface() ||
+                            !render_client_view(view_state, command_buffer, input_mode)) {
+                            done = true;
+                        }
+                    } else if (!show_local_status(chunk)) {
+                        done = true;
+                    }
+                } else if (use_structured_client_render(view_state)) {
+                    if (!ensure_render_surface() ||
+                        !render_client_view(view_state, command_buffer, input_mode)) {
+                        done = true;
+                    }
+                } else if (!write_stdout(chunk)) {
                     done = true;
                 }
             } else if (message.type == MessageType::kServerRedraw) {
                 const std::string redraw(message.payload.begin(), message.payload.end());
                 view_state.focused_pane_id = message.arg0;
                 view_state.layout = parse_redraw_layout(redraw, message.arg0);
-                if (!render_client_view(view_state, command_buffer, input_mode)) {
+                if (use_structured_client_render(view_state)) {
+                    if (!ensure_render_surface() ||
+                        !render_client_view(view_state, command_buffer, input_mode)) {
+                        done = true;
+                    }
+                } else if (!ensure_render_surface()) {
                     done = true;
                 }
             } else if (message.type == MessageType::kServerExit) {
@@ -1468,6 +1759,10 @@ int client_process(int socket_fd, bool read_only) {
                 done = true;
             }
         }
+    }
+
+    if (alternate_screen_active) {
+        leave_alternate_screen();
     }
 
     terminal_guard.restore();

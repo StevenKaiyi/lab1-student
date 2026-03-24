@@ -3,7 +3,13 @@
     "allow": [
       "Bash(chmod:*)",
       "Bash(find /home/kaiyi/lab1-student -type f -name *.c -o -name *.h)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Read(//mnt/wsl.Ubuntu/home/kaiyi/**)",
+      "Read(///wsl.localhost/Ubuntu/home/kaiyi/**)",
+      "Bash(python3 test_single_pane.py)",
+      "Bash(python3 test_multi_pane_layout.py)",
+      "Bash(python3 evaluator.py --mode quick)",
+      "Bash(python3 evaluator.py --help)"
     ]
   }
 }

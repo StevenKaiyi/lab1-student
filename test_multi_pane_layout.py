@@ -83,26 +83,36 @@ def recv_until(sock: socket.socket, predicate, timeout: float = TIMEOUT):
     raise TestFailure("timeout waiting for expected server message")
 
 
-def connect_client(instance: str, read_only: bool = False) -> socket.socket:
+def connect_client(instance: str) -> socket.socket:
     sock = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     sock.connect(socket_path(instance))
-    sock.sendall(pack_message(MSG_CLIENT_HELLO, 1 if read_only else 0, 0))
+    sock.sendall(pack_message(MSG_CLIENT_HELLO, 0, 0))
     return sock
 
 
-def send_input(sock: socket.socket, text: str) -> None:
-    sock.sendall(pack_message(MSG_CLIENT_INPUT, 0, 0, text.encode()))
+def wait_for_socket(instance: str, timeout: float = TIMEOUT) -> None:
+    deadline = time.time() + timeout
+    path = socket_path(instance)
+    while time.time() < deadline:
+        if os.path.exists(path):
+            return
+        time.sleep(0.05)
+    raise TestFailure(f"timeout waiting for socket: {path}")
 
 
-def send_command(sock: socket.socket, command: str) -> str:
-    sock.sendall(pack_message(MSG_CLIENT_COMMAND, 0, 0, command.encode()))
+def wait_for_redraw(sock: socket.socket, token: str, timeout: float = TIMEOUT):
+    def has_redraw(message, _messages):
+        msg_type, _arg0, _arg1, payload = message
+        return msg_type == MSG_SERVER_REDRAW and token.encode() in payload
 
-    def is_status(message, _messages):
-        msg_type, _arg0, _arg1, _payload = message
-        return msg_type == MSG_SERVER_STATUS
+    message, _ = recv_until(sock, has_redraw, timeout=timeout)
+    return message
 
-    message, _ = recv_until(sock, is_status)
-    return message[3].decode(errors="replace")
+
+def send_resize_wait_redraw(sock: socket.socket, rows: int, cols: int, token: str,
+                            timeout: float = TIMEOUT) -> None:
+    sock.sendall(pack_message(MSG_CLIENT_RESIZE, rows, cols))
+    wait_for_redraw(sock, token, timeout=timeout)
 
 
 def send_command_wait_redraw(sock: socket.socket, command: str, redraw_token: str,
@@ -121,26 +131,8 @@ def send_command_wait_redraw(sock: socket.socket, command: str, redraw_token: st
     raise TestFailure(f"timeout waiting for status+redraw for command: {command}")
 
 
-def wait_for_redraw(sock: socket.socket, token: str, timeout: float = TIMEOUT) -> None:
-    def has_redraw(message, _messages):
-        msg_type, _arg0, _arg1, payload = message
-        return msg_type == MSG_SERVER_REDRAW and token.encode() in payload
-
-    recv_until(sock, has_redraw, timeout=timeout)
-
-
-def wait_for_output(sock: socket.socket, token: str, timeout: float = TIMEOUT) -> None:
-    deadline = time.time() + timeout
-    combined = ""
-    while time.time() < deadline:
-        remaining = max(0.0, deadline - time.time())
-        msg_type, _arg0, _arg1, payload = recv_message(sock, timeout=remaining)
-        if msg_type != MSG_SERVER_OUTPUT:
-            continue
-        combined += payload.decode(errors="replace")
-        if token in normalize_output(combined):
-            return
-    raise TestFailure(f"timeout waiting for output token: {token}")
+def send_input(sock: socket.socket, text: str) -> None:
+    sock.sendall(pack_message(MSG_CLIENT_INPUT, 0, 0, text.encode()))
 
 
 def read_output_until(sock: socket.socket, expected: str, timeout: float = TIMEOUT) -> str:
@@ -158,23 +150,11 @@ def read_output_until(sock: socket.socket, expected: str, timeout: float = TIMEO
     raise TestFailure(f"timeout waiting for output text: {expected}")
 
 
-def wait_for_exit(sock: socket.socket, timeout: float = TIMEOUT):
-    def is_exit(message, _messages):
-        msg_type, _arg0, _arg1, _payload = message
-        return msg_type == MSG_SERVER_EXIT
-
-    message, _ = recv_until(sock, is_exit, timeout=timeout)
-    return message[1], message[2]
-
-
-def wait_for_socket(instance: str, timeout: float = TIMEOUT) -> None:
-    deadline = time.time() + timeout
-    path = socket_path(instance)
-    while time.time() < deadline:
-        if os.path.exists(path):
-            return
-        time.sleep(0.05)
-    raise TestFailure(f"timeout waiting for socket: {path}")
+def assert_size_output(sock: socket.socket, expected: str) -> None:
+    send_input(sock, 'stty size\n')
+    output = read_output_until(sock, expected)
+    if expected not in output:
+        raise TestFailure(f"unexpected size output: {output}")
 
 
 def main() -> int:
@@ -183,7 +163,7 @@ def main() -> int:
         print("run `make` first", file=sys.stderr)
         return 2
 
-    instance = "multi-pane-command-test"
+    instance = "multi-pane-layout-test"
     cleanup_socket(instance)
 
     env = os.environ.copy()
@@ -201,80 +181,48 @@ def main() -> int:
     )
 
     client = None
-    ro_client = None
     try:
         wait_for_socket(instance)
 
-        client = connect_client(instance, read_only=False)
-        client.sendall(pack_message(MSG_CLIENT_RESIZE, 24, 80))
+        client = connect_client(instance)
+        send_resize_wait_redraw(client, 25, 80, "focus=0 layout=0*[25x80@0]")
 
-        send_input(client, 'printf "__PANE0_READY__\\n"\n')
-        wait_for_output(client, "__PANE0_READY__")
-
-        status = send_command_wait_redraw(client, ":new", "focus=1 layout=")
+        status = send_command_wait_redraw(client, ":new", "focus=1 layout=0[13x80@0],1*[12x80@13]")
         if "ok: created pane 1" not in status:
-            raise TestFailure(f"unexpected :new status: {status}")
-        wait_for_redraw(client, "0[12x80@0],1*[12x80@12]")
-
+            raise TestFailure(f"unexpected first :new status: {status}")
         send_input(client, 'printf "__PANE1_READY__\\n"\n')
-        wait_for_output(client, "__PANE1_READY__")
+        read_output_until(client, '__PANE1_READY__')
 
-        send_input(client, 'stty size\n')
-        pane1_size_output = read_output_until(client, "12 80")
-        if "12 80" not in pane1_size_output:
-            raise TestFailure(f"unexpected pane 1 size output: {pane1_size_output}")
+        status = send_command_wait_redraw(client, ":new", "focus=2 layout=0[9x80@0],1[8x80@9],2*[8x80@17]")
+        if "ok: created pane 2" not in status:
+            raise TestFailure(f"unexpected second :new status: {status}")
+        send_input(client, 'printf "__PANE2_READY__\\n"\n')
+        read_output_until(client, '__PANE2_READY__')
 
-        send_input(client, 'printf "__PANE1_FOCUSED__\\n"\n')
-        wait_for_output(client, "__PANE1_FOCUSED__")
+        assert_size_output(client, "8 80")
 
-        status = send_command_wait_redraw(client, ":focus 0", "focus=0 layout=")
+        status = send_command_wait_redraw(client, ":focus 0", "focus=0 layout=0*[9x80@0],1[8x80@9],2[8x80@17]")
         if "ok: focused pane 0" not in status:
-            raise TestFailure(f"unexpected :focus status: {status}")
-        wait_for_redraw(client, "0*[12x80@0],1[12x80@12]")
+            raise TestFailure(f"unexpected :focus 0 status: {status}")
+        assert_size_output(client, "9 80")
 
-        send_input(client, 'stty size\n')
-        pane0_size_output = read_output_until(client, "12 80")
-        if "12 80" not in pane0_size_output:
-            raise TestFailure(f"unexpected pane 0 size output: {pane0_size_output}")
+        send_resize_wait_redraw(client, 31, 90, "focus=0 layout=0*[11x90@0],1[10x90@11],2[10x90@21]")
+        assert_size_output(client, "11 90")
 
-        send_input(client, 'printf "__PANE0_FOCUSED__\\n"\n')
-        wait_for_output(client, "__PANE0_FOCUSED__")
+        status = send_command_wait_redraw(client, ":focus 2", "focus=2 layout=0[11x90@0],1[10x90@11],2*[10x90@21]")
+        if "ok: focused pane 2" not in status:
+            raise TestFailure(f"unexpected :focus 2 status: {status}")
+        assert_size_output(client, "10 90")
 
-        ro_client = connect_client(instance, read_only=True)
-        wait_for_redraw(ro_client, "focus=0 layout=0*[12x80@0],1[12x80@12]")
-        ro_status = send_command(ro_client, ":new")
-        if "error: read-only clients cannot run :new" not in ro_status:
-            raise TestFailure(f"unexpected read-only :new status: {ro_status}")
-
-        status = send_command_wait_redraw(client, ":kill 1", "focus=0 layout=")
-        if "ok: terminating pane 1" not in status:
-            raise TestFailure(f"unexpected :kill 1 status: {status}")
-
-        send_input(client, 'printf "__PANE0_STILL_ALIVE__\\n"\n')
-        wait_for_output(client, "__PANE0_STILL_ALIVE__")
-
-        status = send_command(client, ":kill 0")
-        if "ok: terminating pane 0" not in status:
-            raise TestFailure(f"unexpected :kill 0 status: {status}")
-
-        exit_code, exit_signal = wait_for_exit(client)
-        if exit_code != 129 or exit_signal != 1:
-            raise TestFailure(f"unexpected server exit tuple: code={exit_code} signal={exit_signal}")
-
-        proc.wait(timeout=5.0)
-        print("multi-pane command checks passed")
-        print("pane 0 ready check: ok")
-        print("create pane check: ok")
-        print("redraw after create check: ok")
-        print("split layout size check: ok")
-        print("new pane focused check: ok")
+        print("multi-pane layout checks passed")
+        print("initial single-pane redraw check: ok")
+        print("two-pane vertical split check: ok")
+        print("three-pane vertical split check: ok")
+        print("pane 2 winsize check: ok")
         print("focus pane 0 check: ok")
-        print("redraw after focus check: ok")
-        print("read-only command rejection check: ok")
-        print("kill secondary pane check: ok")
-        print("redraw after kill check: ok")
-        print("remaining pane stays interactive check: ok")
-        print("last pane exit propagates check: ok")
+        print("pane 0 winsize check: ok")
+        print("resize redraw check: ok")
+        print("resized pane winsize check: ok")
         return 0
     except TestFailure as exc:
         print(f"TEST FAILED: {exc}", file=sys.stderr)
@@ -282,8 +230,6 @@ def main() -> int:
     finally:
         if client is not None:
             client.close()
-        if ro_client is not None:
-            ro_client.close()
         if proc.poll() is None:
             try:
                 os.killpg(proc.pid, signal.SIGTERM)

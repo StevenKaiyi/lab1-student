@@ -165,7 +165,7 @@
 - [x] 区分普通输入与前缀命令输入
 - [x] 支持 `Ctrl+B` 前缀键状态机
 - [x] 支持命令模式输入缓冲
-- [ ] 支持更多 prefix 命令，例如 `Ctrl+B d / n / p`
+- [x] 支持更多 prefix 命令，例如 `Ctrl+B d / n / p`
 
 ### C3. 终端尺寸处理
 
@@ -223,8 +223,8 @@
 
 ### E3. 状态同步
 
-- [ ] pane 创建/删除后通知 client 重绘
-- [ ] pane 焦点变化后通知 client 更新视图
+- [x] pane 创建/删除后通知 client 重绘
+- [x] pane 焦点变化后通知 client 更新视图
 
 ---
 
@@ -234,22 +234,22 @@
 
 ### F1. 布局模型
 
-- [ ] 定义垂直等分布局
-- [ ] 定义 pane 可见区域
-- [ ] 定义分隔行渲染规则
-- [ ] 标记当前焦点 pane
+- [x] 定义垂直等分布局
+- [x] 定义 pane 可见区域
+- [x] 定义分隔行渲染规则
+- [x] 标记当前焦点 pane
 
 ### F2. winsize 联动
 
-- [ ] 根据布局为每个 pane 计算 `rows/cols`
+- [x] 根据布局为每个 pane 计算 `rows/cols`
 - [x] 当前会把 client winsize 广播到所有 pane 的 PTY
 - [ ] 在布局变化后为相关 pane 传播 `SIGWINCH`
 
 ### F3. 布局验证
 
-- [ ] 两个 pane 同时可见
-- [ ] 多个 pane 分配行数合理
-- [ ] resize 后布局与 `stty size` 一致
+- [x] 两个 pane 同时可见
+- [x] 多个 pane 分配行数合理
+- [x] resize 后布局与 `stty size` 一致
 
 ---
 
@@ -290,8 +290,8 @@
 ### H2. 焦点切换接口
 
 - [x] `:focus <pane_id>`
-- [ ] `Ctrl+B n` 切到下一个 pane
-- [ ] `Ctrl+B p` 切到上一个 pane
+- [x] `Ctrl+B n` 切到下一个 pane
+- [x] `Ctrl+B p` 切到上一个 pane
 
 ### H3. 输入路由
 
@@ -331,7 +331,7 @@
 
 ### J1. detach 语义
 
-- [ ] `Ctrl+B d` 触发 detach
+- [x] `Ctrl+B d` 触发 detach
 - [x] client 退出或断开后 server 不会因无 client 立即退出
 - [x] pane 子进程继续运行
 
@@ -413,7 +413,7 @@
 
 - [x] 已有基础 `SIGCHLD + waitpid()`
 - [ ] 扩展到 pane 子进程之外的 `pipeout/log` 子进程
-- [x] 当前单 pane + `fork_exit` 场景已验证无 zombie 堆积
+- [~] 当前单 pane + `fork_exit` 场景有基础验证，但仍观察到 zombie 告警，需继续确认
 - [ ] 补齐 server 子进程自身的回收策略
 
 ### M3. 异常路径
@@ -438,7 +438,7 @@
 
 - [ ] `test_single_pane_probe.py`
 - [ ] `test_single_pane_resize.py`
-- [ ] `test_multi_pane_layout.py`
+- [x] `test_multi_pane_layout.py`
 - [ ] `test_focus_and_signal.py`
 - [ ] `test_detach_reattach.py`
 - [ ] `test_multi_client.py`
@@ -449,7 +449,7 @@
 
 - [x] 每次改协议后重跑基础单 pane 测试
 - [x] 当前已补一条多 pane 命令生命周期测试
-- [ ] 每次改布局后重跑 winsize 相关测试
+- [x] 每次改布局后重跑 winsize 相关测试
 - [ ] 每次改生命周期后重跑 zombie/fd 清理测试
 
 ---
@@ -460,7 +460,7 @@
 
 - [x] 第一步：让 `:new / :kill / :focus` 真正修改 session 状态，而不是只做解析
 - [x] 第二步：把 `SessionState` 从单 pane 扩成 pane 容器，并引入稳定 pane id
-- [ ] 第三步：实现最简单的垂直等分布局和多 pane winsize 分发
+- [x] 第三步：实现最简单的垂直等分布局和多 pane winsize 分发
 - [ ] 第四步：实现真实焦点切换与输入路由可视化
 - [ ] 第五步：补齐 `Ctrl+B d` detach、完整 reattach 视图恢复、递归 attach 保护
 - [ ] 第六步：稳定多 client 尺寸协调与只读语义

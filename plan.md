@@ -1,6 +1,6 @@
 ﻿# mini-tmux Implementation Plan
 
-这份文档把整个 `mini-tmux` 的实现拆成可逐步推进的小模块。后续每完成一项，直接在对应条目前打勾即可。
+这份文档记录当前 `mini-tmux` 代码的真实进度，并把后续工作拆成可持续推进的模块。它不是最初设想版路线图，而是和当前实现对齐的执行看板。
 
 ## 状态约定
 
@@ -14,23 +14,55 @@
 
 ### 已有产物
 
-- [x] 建立最小 `Server / Client / Pane` 骨架
+- [x] 建立最小 `Server / Client / Pane / Session` 骨架
 - [x] 使用 `PTY` 启动单个 pane 内的 shell
-- [x] 建立最小 `Unix domain socket` 通信链路
+- [x] 建立最小 `Unix domain socket (SOCK_SEQPACKET)` 通信链路
 - [x] 建立最小 `poll()` 事件循环
-- [x] Client 进入 raw mode，并在退出时恢复
+- [x] Client 进入 raw mode，并在正常退出时恢复
 - [x] 单 pane 的输入输出双向转发
-- [x] 单 pane 的 `isatty()` / `tty` / `stty size` 基础自测
-- [x] 编写单 pane 自测脚本 `test_single_pane.py`
+- [x] attach 时补发 backlog，减少首屏输出丢失
+- [x] 支持 `./mini-tmux` 自动 attach 或首次启动
+- [x] 支持 `./mini-tmux attach`
+- [x] 支持 `./mini-tmux attach -r` 只读 attach
+- [x] Client 侧实现 `Ctrl+B` 前缀状态机
+- [x] 支持 `Ctrl+B :` 进入命令模式并发送命令到 server
+- [x] Server 侧实现最小命令解析与状态反馈 `:new / :kill / :focus`
+- [x] 单 pane 自测脚本 `test_single_pane.py`
+- [x] 多 pane 命令生命周期回归脚本 `test_multi_pane_commands.py`
+
+### 已验证行为
+
+- [x] `tty` 检查
+- [x] `isatty()` 检查
+- [x] `stty size` 检查
+- [x] I/O round-trip 检查
+- [x] `top` 兼容性检查
+- [x] `vim` 兼容性检查
+- [x] `helpers/fork_exit` 僵尸回收检查
+- [x] pane 退出后的基础清理检查
+- [x] `:new / :focus / :kill` 状态变更检查
+- [x] 只读 client 写命令拒绝检查（当前覆盖 `:new`）
+- [x] 最后一个 pane 退出时 server/client 收尾检查
 
 ### 当前实现边界
 
-- [x] 仅支持单个 pane
-- [x] 尚未实现命令模式
-- [x] 尚未实现多 pane 布局
-- [x] 尚未实现 detach / reattach
-- [x] 尚未实现多 client
-- [x] 尚未实现 log / pipeout / capture
+- [x] 已支持多个 pane 在状态层和生命周期层存在
+- [x] 已支持最小命令模式、pane 创建/销毁、焦点切换
+- [x] 已支持 attach / reattach 基础链路，但尚无显式 `Ctrl+B d` detach 快捷键
+- [x] 已支持多个 client 连接与只读 client 基础握手
+- [x] 尚未实现多 pane 布局与结构化渲染
+- [x] 尚未实现真正的多 pane 视图重绘与输入路由可视化
+- [x] 尚未实现 `log / pipeout / capture`
+- [x] 尚未实现递归 attach 保护
+
+### 代码现状备注
+
+- [x] `SessionState / ServerState / PaneState / ClientInputMode` 已成型
+- [x] 协议已包含 `kClientCommand / kServerStatus / kServerRedraw` 等扩展消息类型
+- [x] `kServerRedraw` 目前仅预留，尚未真正使用
+- [x] `:new / :kill / :focus` 已落到最小 pane 生命周期和焦点状态变更
+- [x] 当前 `./mini-tmux` 语义是“有 session 就 attach，没有就创建并 attach”
+- [x] 仍缺少“禁止在 pane 内递归 attach 自己”的保护
 
 ---
 
@@ -38,48 +70,49 @@
 
 建议按下面顺序推进：
 
-1. 单 pane 基础闭环
-2. 命令模式与 pane 管理
-3. 多 pane 数据结构
-4. 布局与渲染
-5. 焦点与输入路由
-6. 信号隔离
-7. detach / reattach
-8. 多 client / 只读 client
-9. log / pipeout / capture
-10. 清理、鲁棒性、回归测试
+1. 稳定当前多 pane 生命周期与回归测试
+2. 实现最小多 pane 布局和 resize 联动
+3. 实现真实焦点切换、输入路由、信号隔离
+4. 补齐 detach / reattach 语义
+5. 稳定多 client / 只读 client 行为
+6. 实现 `log / pipeout / capture`
+7. 做异常路径、资源清理和回归测试
 
 ---
 
 ## 2. 模块 A：进程模型与系统骨架
 
-目标：把整个程序的角色边界固定住，避免后面越写越乱。
+目标：把角色边界固定住，避免后面继续堆零散状态。
 
 ### A1. 运行模式划分
 
 - [x] 明确 `./mini-tmux` 是“首次启动或自动 attach”入口
 - [x] 明确 `./mini-tmux attach` 是 attach 入口
 - [x] 在同一个可执行文件内区分 server/client 行为
-- [ ] 明确只读 attach 的命令行入口 `./mini-tmux attach -r`
+- [x] 明确只读 attach 的命令行入口 `./mini-tmux attach -r`
 
 ### A2. 关键对象建模
 
 - [x] 定义 pane 的基本状态：`master_fd / child_pid / winsize / exit status`
 - [x] 定义 client 连接对象
-- [ ] 定义全局 session / server 状态对象
-- [ ] 把全局状态从“零散变量”收敛成结构化对象
+- [x] 定义 `SessionState`
+- [x] 定义 `ServerState`
+- [x] 把核心全局状态收敛为结构化对象
+- [x] 为后续多 pane 扩展把 `SessionState` 升级为“pane 容器 + 焦点 + backlog”
+- [ ] 继续扩展到“pane 容器 + 焦点 + 布局”
 
 ### A3. 协议与事件框架
 
 - [x] 定义最小 client/server 消息类型：输入、resize、输出、退出
-- [ ] 扩展消息类型以支持命令模式、pane 管理、重绘、attach 语义
-- [ ] 整理协议编码/解码逻辑，避免后面散落在各处
+- [x] 扩展消息类型以支持命令模式、状态反馈和后续重绘
+- [x] 协议编码/解码逻辑已经集中封装
+- [ ] 在协议层补齐 pane 管理、重绘、布局同步等真正需要的消息
 
 ---
 
 ## 3. 模块 B：单 Pane 运行时
 
-目标：把单 pane 这一层做成稳定地基。
+目标：把单 pane 这一层作为稳定地基保住。
 
 ### B1. Pane 启动链
 
@@ -102,16 +135,17 @@
 - [x] 监听 `SIGCHLD`
 - [x] 用 `waitpid()` 回收子进程
 - [x] child 退出后关闭 PTY 并通知 client
-- [ ] 明确 pane state 枚举：created/running/exited/reaped/destroyed
+- [x] 明确 pane state 枚举：`created / running / exited / reaped / destroyed`
 
-### B4. 单 pane 进一步验证
+### B4. 单 pane 验证
 
 - [x] `tty` 检查
 - [x] `isatty()` 检查
 - [x] `stty size` 检查
 - [ ] `helpers/probe` 接入验证
-- [ ] `helpers/fork_exit` 验证僵尸回收
-- [ ] `vim/top` 兼容性验证
+- [x] `helpers/fork_exit` 验证僵尸回收
+- [x] `vim/top` 兼容性验证
+- [ ] 单独补一条 resize 后 `SIGWINCH` 验证
 
 ---
 
@@ -128,9 +162,10 @@
 ### C2. 输入处理
 
 - [x] 普通按键透传到 pane
-- [ ] 区分普通输入与前缀命令输入
-- [ ] 支持 `Ctrl+B` 前缀键状态机
-- [ ] 支持命令模式输入缓冲
+- [x] 区分普通输入与前缀命令输入
+- [x] 支持 `Ctrl+B` 前缀键状态机
+- [x] 支持命令模式输入缓冲
+- [ ] 支持更多 prefix 命令，例如 `Ctrl+B d / n / p`
 
 ### C3. 终端尺寸处理
 
@@ -143,27 +178,28 @@
 
 ## 5. 模块 D：命令模式
 
-目标：建立 tmux 风格的控制入口。
+目标：把“能输入命令”推进到“命令真的生效”。
 
 ### D1. 进入与退出命令模式
 
-- [ ] 支持 `Ctrl+B` 后按 `:` 进入命令模式
-- [ ] 命令模式下暂停向 pane 透传普通输入
-- [ ] 回车执行命令
-- [ ] `Esc` 取消命令模式
+- [x] 支持 `Ctrl+B` 后按 `:` 进入命令模式
+- [x] 命令模式下暂停向 pane 透传普通输入
+- [x] 回车执行命令
+- [x] `Esc` 或 `Ctrl+C` 取消命令模式
 
 ### D2. 命令解析器
 
-- [ ] 解析 `:new`
-- [ ] 解析 `:kill <pane_id>`
-- [ ] 解析 `:focus <pane_id>`
-- [ ] 为后续 `:log` / `:pipeout` / `:capture` 预留解析接口
+- [x] 解析 `:new`
+- [x] 解析 `:kill <pane_id>`
+- [x] 解析 `:focus <pane_id>`
+- [x] 让 `:new / :kill / :focus` 真正改动 session 状态
+- [ ] 为后续 `:log` / `:pipeout` / `:capture` 预留更完整的解析接口
 
 ### D3. 错误反馈
 
-- [ ] 对非法命令返回明确错误信息
-- [ ] 对缺失参数返回明确错误信息
-- [ ] 统一命令执行结果的反馈格式
+- [x] 对非法命令返回明确错误信息
+- [x] 对缺失参数返回明确错误信息
+- [x] 统一命令执行结果的反馈格式
 
 ---
 
@@ -173,17 +209,17 @@
 
 ### E1. Pane 容器
 
-- [ ] 支持创建 Pane 0 之外的新 pane
-- [ ] 维护 pane 列表或映射表
-- [ ] 分配稳定的 pane id
-- [ ] 支持根据 pane id 查找 pane
+- [x] 支持创建 Pane 0 之外的新 pane
+- [x] 维护 pane 列表或映射表
+- [x] 分配稳定的 pane id
+- [x] 支持根据 pane id 查找 pane
 
 ### E2. Pane 生命周期管理
 
-- [ ] `:new` 创建新 pane
-- [ ] `:kill` 销毁指定 pane
-- [ ] child 退出后自动标记 pane 不可用
-- [ ] 最后一个 pane 退出时定义系统行为
+- [x] `:new` 创建新 pane
+- [x] `:kill` 销毁指定 pane
+- [x] child 退出后自动标记 pane 不可用
+- [x] 最后一个 pane 退出时定义系统行为
 
 ### E3. 状态同步
 
@@ -206,7 +242,7 @@
 ### F2. winsize 联动
 
 - [ ] 根据布局为每个 pane 计算 `rows/cols`
-- [ ] 调用 `ioctl(TIOCSWINSZ)` 更新每个 pane 的 PTY
+- [x] 当前会把 client winsize 广播到所有 pane 的 PTY
 - [ ] 在布局变化后为相关 pane 传播 `SIGWINCH`
 
 ### F3. 布局验证
@@ -247,21 +283,22 @@
 
 ### H1. 焦点管理
 
-- [ ] 保存当前焦点 pane id
-- [ ] 新 pane 创建后的焦点策略
-- [ ] pane 销毁后的焦点迁移策略
+- [x] 保存当前焦点 pane id
+- [x] 新 pane 创建后的焦点策略：默认切到新 pane
+- [x] pane 销毁后的焦点迁移策略：选择下一个可用 pane
 
 ### H2. 焦点切换接口
 
-- [ ] `:focus <pane_id>`
+- [x] `:focus <pane_id>`
 - [ ] `Ctrl+B n` 切到下一个 pane
 - [ ] `Ctrl+B p` 切到上一个 pane
 
 ### H3. 输入路由
 
-- [ ] 普通输入只发给焦点 pane
-- [ ] 命令输入只进入命令模式缓冲
-- [ ] 只读 client 禁止发送输入
+- [x] 普通输入只发给焦点 pane
+- [x] 命令输入只进入命令模式缓冲
+- [x] 只读 client 禁止发送普通输入
+- [~] 只读 client 已禁止 `:new / :kill`，其余写命令待补齐
 
 ---
 
@@ -295,19 +332,20 @@
 ### J1. detach 语义
 
 - [ ] `Ctrl+B d` 触发 detach
-- [ ] client 退出但 server 不退出
-- [ ] pane 子进程继续运行
+- [x] client 退出或断开后 server 不会因无 client 立即退出
+- [x] pane 子进程继续运行
 
 ### J2. reattach 语义
 
-- [ ] `./mini-tmux attach` 连接已有 server
-- [ ] attach 后恢复当前 pane 输出视图
-- [ ] attach 后继续交互
+- [x] `./mini-tmux attach` 连接已有 server
+- [~] attach 后恢复当前 pane 输出视图（当前依赖 backlog，未达到真正屏幕重建）
+- [x] attach 后继续交互
 
 ### J3. 无 client 状态
 
-- [ ] 所有 client 断开后 server 继续运行
-- [ ] 新 client 随后可重新 attach
+- [x] 所有 client 断开后 server 继续运行
+- [x] 新 client 随后可重新 attach
+- [ ] 防止在已有 pane 内递归 attach 自己导致输出回环
 
 ---
 
@@ -317,15 +355,18 @@
 
 ### K1. 多 client 管理
 
-- [ ] 支持多个 client 同时 attach
-- [ ] 新 client attach 时同步当前视图
-- [ ] 一个 client 断开不影响其他 client
+- [x] 支持多个 client 同时 attach
+- [x] 新 client attach 时同步 backlog 输出
+- [x] 一个 client 断开不影响其他 client
+- [ ] 新 client attach 时同步“当前完整视图”而不是仅 backlog
 
 ### K2. 输入权限
 
-- [ ] 默认读写 client 可输入
-- [ ] `attach -r` 只读 client 仅接收输出
-- [ ] server 忽略只读 client 的输入
+- [x] 默认读写 client 可输入
+- [x] `attach -r` 只读 client 仅接收输出
+- [x] server 忽略只读 client 的普通输入
+- [x] server 拒绝只读 client 的 `:new / :kill`
+- [ ] server 拒绝所有只读 client 的状态修改命令集合
 
 ### K3. 尺寸协调
 
@@ -366,19 +407,20 @@
 - [x] 基础版本已经在关键路径关闭多余 fd
 - [ ] 系统性梳理 server / client / pane 各自持有的 fd
 - [ ] pane 销毁时保证全部相关 fd 被释放
-- [ ] client 断开时保证 socket 被释放
+- [x] client 断开时释放 socket
 
 ### M2. 进程回收
 
 - [x] 已有基础 `SIGCHLD + waitpid()`
-- [ ] 扩展到 pane 子进程之外的 pipeout/log 子进程
-- [ ] 压力场景下无 zombie 堆积
+- [ ] 扩展到 pane 子进程之外的 `pipeout/log` 子进程
+- [x] 当前单 pane + `fork_exit` 场景已验证无 zombie 堆积
+- [ ] 补齐 server 子进程自身的回收策略
 
 ### M3. 异常路径
 
 - [x] 已忽略 `SIGPIPE`
 - [ ] client 异常退出路径补齐
-- [ ] server 启动失败路径补齐
+- [ ] server 启动失败路径进一步补齐
 - [ ] socket 残留文件恢复策略补齐
 
 ---
@@ -390,6 +432,7 @@
 ### N1. 当前已有测试
 
 - [x] `test_single_pane.py`
+- [x] `test_multi_pane_commands.py`
 
 ### N2. 下一步要补的测试
 
@@ -400,10 +443,12 @@
 - [ ] `test_detach_reattach.py`
 - [ ] `test_multi_client.py`
 - [ ] `test_log_pipe_capture.py`
+- [ ] `test_recursive_attach_guard.py`
 
 ### N3. 回归检查清单
 
-- [ ] 每次改协议后重跑基础单 pane 测试
+- [x] 每次改协议后重跑基础单 pane 测试
+- [x] 当前已补一条多 pane 命令生命周期测试
 - [ ] 每次改布局后重跑 winsize 相关测试
 - [ ] 每次改生命周期后重跑 zombie/fd 清理测试
 
@@ -411,16 +456,16 @@
 
 ## 16. 当前推荐的下一步
 
-如果按最稳的实现路线，建议后面按这个顺序继续：
+按现在这份代码的真实状态，最稳的顺序是：
 
-- [ ] 第一步：实现命令模式最小闭环，只支持 `:new` / `:kill` / `:focus`
-- [ ] 第二步：实现 pane 列表与多 pane 状态管理
-- [ ] 第三步：实现最简单的垂直等分布局
-- [ ] 第四步：实现焦点切换和输入路由
-- [ ] 第五步：实现并验证多 pane 的信号隔离
-- [ ] 第六步：实现 detach / reattach
-- [ ] 第七步：实现多 client 和只读 attach
-- [ ] 第八步：实现 `log` / `pipeout` / `capture`
+- [x] 第一步：让 `:new / :kill / :focus` 真正修改 session 状态，而不是只做解析
+- [x] 第二步：把 `SessionState` 从单 pane 扩成 pane 容器，并引入稳定 pane id
+- [ ] 第三步：实现最简单的垂直等分布局和多 pane winsize 分发
+- [ ] 第四步：实现真实焦点切换与输入路由可视化
+- [ ] 第五步：补齐 `Ctrl+B d` detach、完整 reattach 视图恢复、递归 attach 保护
+- [ ] 第六步：稳定多 client 尺寸协调与只读语义
+- [ ] 第七步：实现 `log` / `pipeout` / `capture`
+- [ ] 第八步：补齐异常退出、server 回收、socket 残留恢复与回归测试
 
 ---
 
@@ -444,4 +489,4 @@
 - [~] 某项任务
 ```
 
-这份文档应该始终和代码状态保持同步，不要把它当成一次性计划，而要把它当成开发中的执行看板。
+这份文档应该持续和代码同步。凡是代码里已经有的框架、限制和测试结论，都应该及时体现在这里，而不是继续保留过时状态。

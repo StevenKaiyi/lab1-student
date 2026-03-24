@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod:*)",
+      "Bash(find /home/kaiyi/lab1-student -type f -name *.c -o -name *.h)",
+      "Bash(ls:*)"
+    ]
+  }
+}

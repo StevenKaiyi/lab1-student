@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 import os
 import pty
 import select
@@ -21,6 +21,7 @@ MSG_CLIENT_RESIZE = 3
 MSG_CLIENT_COMMAND = 4
 MSG_SERVER_OUTPUT = 5
 MSG_SERVER_EXIT = 6
+MSG_SERVER_REDRAW = 7
 MSG_SERVER_STATUS = 8
 
 
@@ -96,12 +97,50 @@ def send_command(sock: socket.socket, command: str) -> str:
     return message[3].decode(errors="replace")
 
 
+def send_command_wait_redraw(sock: socket.socket, command: str, redraw_token: str,
+                             timeout: float = TIMEOUT) -> str:
+    sock.sendall(pack_message(MSG_CLIENT_COMMAND, 0, 0, command.encode()))
+    deadline = time.time() + timeout
+    status = None
+    while time.time() < deadline:
+        remaining = max(0.0, deadline - time.time())
+        msg_type, _arg0, _arg1, payload = recv_message(sock, timeout=remaining)
+        if msg_type == MSG_SERVER_STATUS:
+            status = payload.decode(errors="replace")
+            continue
+        if msg_type == MSG_SERVER_REDRAW and redraw_token.encode() in payload and status is not None:
+            return status
+    raise TestFailure(f"timeout waiting for status+redraw for command: {command}")
+
+
+def wait_for_redraw(sock: socket.socket, token: str, timeout: float = TIMEOUT) -> None:
+    def has_redraw(message, _messages):
+        msg_type, _arg0, _arg1, payload = message
+        return msg_type == MSG_SERVER_REDRAW and token.encode() in payload
+
+    recv_until(sock, has_redraw, timeout=timeout)
+
+
 def wait_for_output(sock: socket.socket, token: str, timeout: float = TIMEOUT) -> None:
     def has_token(message, _messages):
         msg_type, _arg0, _arg1, payload = message
         return msg_type == MSG_SERVER_OUTPUT and token.encode() in payload
 
     recv_until(sock, has_token, timeout=timeout)
+
+
+def read_output_until(sock: socket.socket, token: str, timeout: float = TIMEOUT) -> str:
+    deadline = time.time() + timeout
+    combined = ""
+    while time.time() < deadline:
+        remaining = max(0.0, deadline - time.time())
+        msg_type, _arg0, _arg1, payload = recv_message(sock, timeout=remaining)
+        if msg_type != MSG_SERVER_OUTPUT:
+            continue
+        combined += payload.decode(errors="replace")
+        if token in combined:
+            return combined
+    raise TestFailure(f"timeout waiting for output token: {token}")
 
 
 def wait_for_exit(sock: socket.socket, timeout: float = TIMEOUT):
@@ -172,33 +211,54 @@ def main() -> int:
         client = connect_client(instance, read_only=False)
         client.sendall(pack_message(MSG_CLIENT_RESIZE, 24, 80))
 
-        send_input(client, 'printf "__PANE0_READY__\\n"\n')
+        send_input(client, 'printf "__PANE0_READY__\n"
+')
         wait_for_output(client, "__PANE0_READY__")
 
-        status = send_command(client, ":new")
+        status = send_command_wait_redraw(client, ":new", "focus=1 layout=")
         if "ok: created pane 1" not in status:
             raise TestFailure(f"unexpected :new status: {status}")
+        wait_for_redraw(client, "0[12x80@0],1*[12x80@12]")
 
-        send_input(client, 'printf "__PANE1_FOCUSED__\\n"\n')
+        send_input(client, 'stty size; printf " __PANE1_SIZE__\n"
+')
+        pane1_size_output = read_output_until(client, "__PANE1_SIZE__")
+        if "12 80 __PANE1_SIZE__" not in pane1_size_output.replace("", "").replace("
+", " "):
+            raise TestFailure(f"unexpected pane 1 size output: {pane1_size_output}")
+
+        send_input(client, 'printf "__PANE1_FOCUSED__\n"
+')
         wait_for_output(client, "__PANE1_FOCUSED__")
 
-        status = send_command(client, ":focus 0")
+        status = send_command_wait_redraw(client, ":focus 0", "focus=0 layout=")
         if "ok: focused pane 0" not in status:
             raise TestFailure(f"unexpected :focus status: {status}")
+        wait_for_redraw(client, "0*[12x80@0],1[12x80@12]")
 
-        send_input(client, 'printf "__PANE0_FOCUSED__\\n"\n')
+        send_input(client, 'stty size; printf " __PANE0_SIZE__\n"
+')
+        pane0_size_output = read_output_until(client, "__PANE0_SIZE__")
+        if "12 80 __PANE0_SIZE__" not in pane0_size_output.replace("", "").replace("
+", " "):
+            raise TestFailure(f"unexpected pane 0 size output: {pane0_size_output}")
+
+        send_input(client, 'printf "__PANE0_FOCUSED__\n"
+')
         wait_for_output(client, "__PANE0_FOCUSED__")
 
         ro_client = connect_client(instance, read_only=True)
+        wait_for_redraw(ro_client, "focus=0 layout=0*[12x80@0],1[12x80@12]")
         ro_status = send_command(ro_client, ":new")
         if "error: read-only clients cannot run :new" not in ro_status:
             raise TestFailure(f"unexpected read-only :new status: {ro_status}")
 
-        status = send_command(client, ":kill 1")
+        status = send_command_wait_redraw(client, ":kill 1", "focus=0 layout=")
         if "ok: terminating pane 1" not in status:
             raise TestFailure(f"unexpected :kill 1 status: {status}")
 
-        send_input(client, 'printf "__PANE0_STILL_ALIVE__\\n"\n')
+        send_input(client, 'printf "__PANE0_STILL_ALIVE__\n"
+')
         wait_for_output(client, "__PANE0_STILL_ALIVE__")
 
         status = send_command(client, ":kill 0")
@@ -213,10 +273,14 @@ def main() -> int:
         print("multi-pane command checks passed")
         print("pane 0 ready check: ok")
         print("create pane check: ok")
+        print("redraw after create check: ok")
+        print("split layout size check: ok")
         print("new pane focused check: ok")
         print("focus pane 0 check: ok")
+        print("redraw after focus check: ok")
         print("read-only command rejection check: ok")
         print("kill secondary pane check: ok")
+        print("redraw after kill check: ok")
         print("remaining pane stays interactive check: ok")
         print("last pane exit propagates check: ok")
         return 0

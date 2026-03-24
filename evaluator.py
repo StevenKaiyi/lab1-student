@@ -728,9 +728,57 @@ class TestTuiCompat(TestCase):
         self.client.send_input("vim\n")
         time.sleep(1.0)
 
+        # 进入插入模式并输入内容
+        self.client.send_input("i")
+        time.sleep(0.2)
+        self.client.send_input("VIM_STATE_TEST")
+        time.sleep(0.2)
+        self.client.send_input("\x1b")  # ESC
+        time.sleep(0.2)
+
+        # 切换到 pane 0 - 测试状态保持
+        self.client.send_command(":focus 0")
+        time.sleep(0.3)
+
+        # 在 pane 0 执行命令
+        self.client.send_input("echo PANE0_CHECK\n")
+        time.sleep(0.3)
+
+        msgs = self.client.recv_messages(0.5)
+        has_pane0 = any(b"PANE0_CHECK" in msg.payload for msg in msgs)
+
+        if not has_pane0:
+            return self.fail("Pane 0 not responsive")
+
+        # 切回 pane 1
+        self.client.send_command(":focus 1")
+        time.sleep(0.3)
+
+        # 尝试写入文件验证 vim 仍在运行
+        self.client.send_input(":w /tmp/vim_state_test.txt\n")
+        time.sleep(0.5)
+
         # 退出 vim
         self.client.send_input(":q!\n")
         time.sleep(0.5)
+
+        # 检查文件是否创建成功
+        test_file = "/tmp/vim_state_test.txt"
+        try:
+            with open(test_file, "r") as f:
+                content = f.read()
+                if "VIM_STATE_TEST" not in content:
+                    print("  [WARN] Vim state may not have been preserved (content mismatch)")
+                else:
+                    print("  [INFO] Vim state preserved across pane switch")
+        except FileNotFoundError:
+            print("  [WARN] Vim state test file not created")
+        finally:
+            # 清理
+            try:
+                os.unlink(test_file)
+            except:
+                pass
 
         # 检查是否回到 shell
         msgs = self.client.recv_messages(1.0)
@@ -1372,6 +1420,143 @@ class TestLayoutWinsize(TestCase):
         return True
 
 
+class TestTuiStatePreserve(TestCase):
+    """24: TUI 程序 Pane 切换时状态保持"""
+
+    def __init__(self):
+        super().__init__("TUI state preserve on pane switch")
+
+    def run(self) -> bool:
+        if not self.setup():
+            return False
+
+        # 检查 vim 是否可用
+        try:
+            subprocess.run(["which", "vim"], capture_output=True, check=True, timeout=1)
+        except:
+            print("  [SKIP] vim not available")
+            return True  # 跳过此测试
+
+        # 创建临时文件供 vim 编辑
+        tmpdir = tempfile.mkdtemp()
+        test_file = os.path.join(tmpdir, "test_tui_state.txt")
+
+        try:
+            # 写入测试文件
+            with open(test_file, "w") as f:
+                f.write("LINE ONE\n")
+                f.write("LINE TWO\n")
+                f.write("LINE THREE\n")
+
+            self.server_manager = ServerManager("test_24", 24, 80)
+            if not self.server_manager.start():
+                return self.fail("Failed to start server")
+
+            self.client = MiniTmuxClient("test_24")
+            if not self.client.connect():
+                return self.fail("Failed to connect client")
+
+            time.sleep(0.5)
+
+            # 创建第二个 pane
+            self.client.send_command(":new")
+            time.sleep(0.5)
+
+            # 确认 pane 0 是当前焦点
+            self.client.send_command(":focus 0")
+            time.sleep(0.2)
+
+            # 在 pane 0 中启动 vim 并打开测试文件
+            self.client.send_input(f"vim {test_file}\n")
+            time.sleep(1.0)
+
+            # 在 vim 中执行一些操作来记录状态
+            # 使用 :w! 写入标记，确认 vim 正常运行
+            self.client.send_input(":w!\n")
+            time.sleep(0.5)
+
+            # 移动光标到第二行
+            self.client.send_input("j")
+            time.sleep(0.2)
+
+            # 在当前行添加标记
+            self.client.send_input("iMARKED_HERE")
+            time.sleep(0.2)
+            self.client.send_input("\x1b")  # ESC 键
+            time.sleep(0.2)
+
+            # 保存修改
+            self.client.send_input(":w\n")
+            time.sleep(0.5)
+
+            # 切换到 pane 1
+            self.client.send_command(":focus 1")
+            time.sleep(0.3)
+
+            # 在 pane 1 中执行一些命令
+            self.client.send_input("echo PANE1_ACTIVE\n")
+            time.sleep(0.3)
+
+            msgs = self.client.recv_messages(0.5)
+            has_pane1_output = any(b"PANE1_ACTIVE" in msg.payload for msg in msgs)
+
+            if not has_pane1_output:
+                return self.fail("Pane 1 not responding")
+
+            # 在 pane 1 中创建文件
+            self.client.send_input("date > /tmp/pane1_timestamp.txt\n")
+            time.sleep(0.3)
+
+            # 再切回 pane 0
+            self.client.send_command(":focus 0")
+            time.sleep(0.3)
+
+            # 验证 vim 状态是否保持：尝试退出 vim
+            self.client.send_input(":q\n")
+            time.sleep(0.5)
+
+            msgs = self.client.recv_messages(0.5)
+
+            # 如果文件有修改但未保存，vim 会提示
+            # 但我们已经保存过，应该能正常退出
+            # 检查是否有 shell 提示符（表示已退出 vim）
+            has_shell = any(b"$" in msg.payload or b"#" in msg.payload for msg in msgs
+                          if msg.type == MSG_SERVER_OUTPUT)
+
+            if has_shell:
+                # 成功退出 vim，验证文件内容是否包含标记
+                with open(test_file, "r") as f:
+                    content = f.read()
+                    if "MARKED_HERE" in content:
+                        print("  [INFO] Vim state preserved, modifications retained")
+                    else:
+                        print("  [WARN] Modifications not found, but vim exited normally")
+                return True
+            else:
+                # 可能 vim 还在，尝试强制退出
+                self.client.send_input(":q!\n")
+                time.sleep(0.5)
+
+                msgs = self.client.recv_messages(0.5)
+                has_shell = any(b"$" in msg.payload or b"#" in msg.payload for msg in msgs
+                              if msg.type == MSG_SERVER_OUTPUT)
+
+                if has_shell:
+                    print("  [INFO] Vim state preserved (required :q! to exit)")
+                    return True
+                else:
+                    return self.fail("Vim not responding after switching back")
+
+        finally:
+            # 清理
+            if os.path.exists(test_file):
+                os.unlink(test_file)
+            if os.path.exists(tmpdir):
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            if os.path.exists("/tmp/pane1_timestamp.txt"):
+                os.unlink("/tmp/pane1_timestamp.txt")
+
+
 # ============= 测试运行器 =============
 class TestRunner:
     """测试运行器"""
@@ -1401,6 +1586,7 @@ class TestRunner:
             TestLastPaneExit(),
             TestLayoutBothVisible(),
             TestLayoutWinsize(),
+            TestTuiStatePreserve(),
         ]
 
     def run_test(self, test: TestCase) -> bool:

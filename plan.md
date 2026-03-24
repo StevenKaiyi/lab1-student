@@ -1,4 +1,4 @@
-﻿# mini-tmux Implementation Plan
+# mini-tmux Implementation Plan
 
 这份文档记录当前 `mini-tmux` 代码的真实进度，并把后续工作拆成可持续推进的模块。它不是最初设想版路线图，而是和当前实现对齐的执行看板。
 

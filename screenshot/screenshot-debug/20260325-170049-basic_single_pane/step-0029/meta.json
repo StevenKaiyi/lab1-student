@@ -1,0 +1,17 @@
+{
+  "index": 29,
+  "kind": "wait",
+  "label": "shell settle",
+  "input_bytes_hex": "",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 5,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774429255.7017043,
+  "duration_ms": 500
+}

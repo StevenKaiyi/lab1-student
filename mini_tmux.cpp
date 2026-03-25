@@ -356,10 +356,37 @@ enum class PaneState : uint32_t {
     kDestroyed = 5,
 };
 
+struct TextScreenBuffer {
+    enum class EscapeState : uint32_t {
+        kText = 1,
+        kEscape = 2,
+        kCsi = 3,
+        kOsc = 4,
+        kOscEscape = 5,
+    };
+
+    std::vector<std::string> lines;
+    std::string current_line;
+    size_t cursor_col = 0;
+    EscapeState escape_state = EscapeState::kText;
+};
+
+struct PipeoutState {
+    int write_fd = -1;
+    pid_t child_pid = -1;
+};
+
+struct PaneOutputState {
+    int log_fd = -1;
+    PipeoutState pipeout{};
+    TextScreenBuffer capture{};
+};
+
 struct PaneSlot {
     int pane_id = -1;
     Pane pane{};
     PaneState state = PaneState::kCreated;
+    PaneOutputState output{};
 };
 
 struct PaneLayout {
@@ -399,25 +426,14 @@ enum class ClientInputMode : uint32_t {
 
 struct ClientPaneBuffer {
     int pane_id = -1;
-    std::vector<std::string> lines;
-    std::string current_line;
-    size_t cursor_col = 0;
-
-    enum class EscapeState : uint32_t {
-        kText = 1,
-        kEscape = 2,
-        kCsi = 3,
-        kOsc = 4,
-        kOscEscape = 5,
-    };
-
-    EscapeState escape_state = EscapeState::kText;
+    TextScreenBuffer text{};
 };
 
 struct ClientViewState {
     std::vector<PaneLayout> layout;
     std::vector<ClientPaneBuffer> buffers;
     int focused_pane_id = -1;
+    std::string local_status;
 };
 
 void close_fd_if_valid(int &fd) {
@@ -439,21 +455,24 @@ bool leave_alternate_screen() {
     return write_stdout("\x1b[?1049l");
 }
 
-bool redraw_command_prompt(const std::string &buffer) {
-    const std::string prompt = "\r\n:" + buffer;
-    return write_stdout(prompt);
+bool begin_command_prompt() {
+    return write_stdout("\r\n:\x1b[K");
 }
 
-bool clear_command_prompt(const std::string &buffer) {
-    std::string clear = "\r";
-    clear.append(buffer.size() + 2, ' ');
-    clear += "\r";
-    return write_stdout(clear);
+bool redraw_command_prompt(const std::string &buffer) {
+    return write_stdout("\r:" + buffer + "\x1b[K");
+}
+
+bool clear_command_prompt(const std::string &) {
+    return write_stdout("\r\x1b[K");
 }
 
 bool show_local_status(const std::string &text) {
     return write_stdout("\r\n" + text + "\r\n");
 }
+
+constexpr size_t kClientBufferedLines = 200;
+constexpr size_t kCaptureBufferedLines = 1000;
 
 ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
     for (ClientPaneBuffer &buffer : view.buffers) {
@@ -466,15 +485,14 @@ ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
     return &view.buffers.back();
 }
 
-void trim_client_buffer_lines(ClientPaneBuffer &buffer) {
-    constexpr size_t kMaxBufferedLines = 200;
-    if (buffer.lines.size() > kMaxBufferedLines) {
+void trim_text_buffer_lines(TextScreenBuffer &buffer, size_t max_lines) {
+    if (buffer.lines.size() > max_lines) {
         buffer.lines.erase(buffer.lines.begin(),
-                           buffer.lines.begin() + static_cast<std::ptrdiff_t>(buffer.lines.size() - kMaxBufferedLines));
+                           buffer.lines.begin() + static_cast<std::ptrdiff_t>(buffer.lines.size() - max_lines));
     }
 }
 
-void append_printable_char(ClientPaneBuffer &buffer, char ch) {
+void append_printable_char(TextScreenBuffer &buffer, char ch) {
     if (buffer.cursor_col < buffer.current_line.size()) {
         buffer.current_line[buffer.cursor_col] = ch;
     } else {
@@ -486,13 +504,13 @@ void append_printable_char(ClientPaneBuffer &buffer, char ch) {
     ++buffer.cursor_col;
 }
 
-void append_spaces(ClientPaneBuffer &buffer, size_t count) {
+void append_spaces(TextScreenBuffer &buffer, size_t count) {
     for (size_t i = 0; i < count; ++i) {
         append_printable_char(buffer, ' ');
     }
 }
 
-void handle_backspace(ClientPaneBuffer &buffer) {
+void handle_backspace(TextScreenBuffer &buffer) {
     if (buffer.cursor_col == 0 || buffer.current_line.empty()) {
         return;
     }
@@ -503,14 +521,14 @@ void handle_backspace(ClientPaneBuffer &buffer) {
     --buffer.cursor_col;
 }
 
-void handle_newline(ClientPaneBuffer &buffer) {
+void handle_newline(TextScreenBuffer &buffer, size_t max_lines) {
     buffer.lines.push_back(buffer.current_line);
     buffer.current_line.clear();
     buffer.cursor_col = 0;
-    trim_client_buffer_lines(buffer);
+    trim_text_buffer_lines(buffer, max_lines);
 }
 
-void handle_csi_final(ClientPaneBuffer &buffer, char final_byte) {
+void handle_csi_final(TextScreenBuffer &buffer, char final_byte) {
     if (final_byte == 'K') {
         if (buffer.cursor_col < buffer.current_line.size()) {
             buffer.current_line.erase(static_cast<std::string::size_type>(buffer.cursor_col));
@@ -520,73 +538,84 @@ void handle_csi_final(ClientPaneBuffer &buffer, char final_byte) {
             --buffer.cursor_col;
         }
     } else if (final_byte == 'C') {
-        if (buffer.cursor_col < buffer.current_line.size()) {
-            ++buffer.cursor_col;
-        }
+        ++buffer.cursor_col;
     }
 }
 
-void append_client_output(ClientViewState &view, int pane_id, const std::string &chunk) {
-    ClientPaneBuffer *buffer = find_client_buffer(view, pane_id);
+void append_text_output(TextScreenBuffer &buffer, const std::string &chunk, size_t max_lines) {
     for (unsigned char uch : chunk) {
         const char ch = static_cast<char>(uch);
-        switch (buffer->escape_state) {
-            case ClientPaneBuffer::EscapeState::kText:
+        switch (buffer.escape_state) {
+            case TextScreenBuffer::EscapeState::kText:
                 if (ch == '\x1b') {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kEscape;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kEscape;
                     continue;
                 }
                 if (ch == '\r') {
-                    buffer->current_line.clear();
-                    buffer->cursor_col = 0;
+                    buffer.cursor_col = 0;
                     continue;
                 }
                 if (ch == '\n') {
-                    handle_newline(*buffer);
+                    handle_newline(buffer, max_lines);
                     continue;
                 }
                 if (ch == '\b' || ch == 127) {
-                    handle_backspace(*buffer);
+                    handle_backspace(buffer);
                     continue;
                 }
                 if (ch == '\t') {
-                    append_spaces(*buffer, 4);
+                    append_spaces(buffer, 4);
                     continue;
                 }
                 if (uch < 32) {
                     continue;
                 }
-                append_printable_char(*buffer, ch);
+                append_printable_char(buffer, ch);
                 continue;
-            case ClientPaneBuffer::EscapeState::kEscape:
+            case TextScreenBuffer::EscapeState::kEscape:
                 if (ch == '[') {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kCsi;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kCsi;
                 } else if (ch == ']') {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kOsc;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kOsc;
                 } else {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kText;
                 }
                 continue;
-            case ClientPaneBuffer::EscapeState::kCsi:
+            case TextScreenBuffer::EscapeState::kCsi:
                 if (ch >= 0x40 && ch <= 0x7e) {
-                    handle_csi_final(*buffer, ch);
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                    handle_csi_final(buffer, ch);
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kText;
                 }
                 continue;
-            case ClientPaneBuffer::EscapeState::kOsc:
+            case TextScreenBuffer::EscapeState::kOsc:
                 if (ch == '\a') {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kText;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kText;
                 } else if (ch == '\x1b') {
-                    buffer->escape_state = ClientPaneBuffer::EscapeState::kOscEscape;
+                    buffer.escape_state = TextScreenBuffer::EscapeState::kOscEscape;
                 }
                 continue;
-            case ClientPaneBuffer::EscapeState::kOscEscape:
-                buffer->escape_state =
-                    ch == '\\' ? ClientPaneBuffer::EscapeState::kText : ClientPaneBuffer::EscapeState::kOsc;
+            case TextScreenBuffer::EscapeState::kOscEscape:
+                buffer.escape_state =
+                    ch == '\\' ? TextScreenBuffer::EscapeState::kText : TextScreenBuffer::EscapeState::kOsc;
                 continue;
         }
     }
-    trim_client_buffer_lines(*buffer);
+    trim_text_buffer_lines(buffer, max_lines);
+}
+
+std::string render_text_snapshot(const TextScreenBuffer &buffer) {
+    std::string snapshot;
+    for (const std::string &line : buffer.lines) {
+        snapshot += line;
+        snapshot.push_back('\n');
+    }
+    snapshot += buffer.current_line;
+    return snapshot;
+}
+
+void append_client_output(ClientViewState &view, int pane_id, const std::string &chunk) {
+    ClientPaneBuffer *buffer = find_client_buffer(view, pane_id);
+    append_text_output(buffer->text, chunk, kClientBufferedLines);
 }
 
 std::vector<PaneLayout> parse_redraw_layout(const std::string &payload, int focused_pane_id) {
@@ -661,6 +690,9 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
         std::string header = "Pane " + std::to_string(pane.pane_id);
         if (pane.focused) {
             header += " [active]";
+            if (!view.local_status.empty() && input_mode != ClientInputMode::kCommand) {
+                header += " | " + view.local_status;
+            }
         }
         frame += fit_to_width(header, pane.cols) + "\r\n";
         const int header_row = screen_row;
@@ -668,10 +700,11 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
 
         std::vector<std::string> visible_lines;
         if (buffer != nullptr) {
-            visible_lines = buffer->lines;
-            visible_lines.push_back(buffer->current_line);
+            visible_lines = buffer->text.lines;
+            visible_lines.push_back(buffer->text.current_line);
         }
-        const int body_rows = std::max<int>(0, static_cast<int>(pane.rows) - 1);
+        const int reserved_rows = 1 + (i + 1 != view.layout.size() ? 1 : 0);
+        const int body_rows = std::max<int>(0, static_cast<int>(pane.rows) - reserved_rows);
         int start = static_cast<int>(visible_lines.size()) - body_rows;
         if (start < 0) {
             start = 0;
@@ -689,7 +722,7 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
                     cursor_offset = body_rows - 1;
                 }
                 cursor_row = header_row + 1 + cursor_offset;
-                const size_t raw_col = buffer != nullptr ? buffer->cursor_col : 0;
+                const size_t raw_col = buffer != nullptr ? buffer->text.cursor_col : 0;
                 const unsigned short max_col = pane.cols == 0 ? 1 : pane.cols;
                 cursor_col = 1 + static_cast<int>(std::min<size_t>(raw_col, max_col - 1));
             } else {
@@ -784,6 +817,182 @@ std::string format_ok(const std::string &message) {
     return "ok: " + message;
 }
 
+bool split_command_name_and_rest(const std::string &input, std::string &name, std::string &rest) {
+    size_t pos = 0;
+    while (pos < input.size() && std::isspace(static_cast<unsigned char>(input[pos])) != 0) {
+        ++pos;
+    }
+    if (pos >= input.size()) {
+        return false;
+    }
+
+    const size_t name_start = pos;
+    while (pos < input.size() && std::isspace(static_cast<unsigned char>(input[pos])) == 0) {
+        ++pos;
+    }
+    name = input.substr(name_start, pos - name_start);
+    rest = trim_ascii_whitespace(input.substr(pos));
+    return true;
+}
+
+bool parse_single_non_negative_int_argument(const std::string &input, int &value) {
+    const std::vector<std::string> tokens = split_ascii_whitespace(input);
+    return tokens.size() == 1 && parse_non_negative_int(tokens[0], value);
+}
+
+bool parse_pane_and_tail(const std::string &input, int &pane_id, std::string &tail) {
+    size_t pos = 0;
+    while (pos < input.size() && std::isspace(static_cast<unsigned char>(input[pos])) != 0) {
+        ++pos;
+    }
+    if (pos >= input.size()) {
+        return false;
+    }
+
+    const size_t pane_start = pos;
+    while (pos < input.size() && std::isspace(static_cast<unsigned char>(input[pos])) == 0) {
+        ++pos;
+    }
+    if (!parse_non_negative_int(input.substr(pane_start, pos - pane_start), pane_id)) {
+        return false;
+    }
+    tail = trim_ascii_whitespace(input.substr(pos));
+    return !tail.empty();
+}
+
+int open_output_file(const std::string &path, int flags) {
+    const int fd = open(path.c_str(), O_WRONLY | O_CREAT | flags, 0644);
+    if (fd < 0) {
+        return -1;
+    }
+    set_cloexec(fd);
+    return fd;
+}
+
+void stop_pane_log(PaneSlot &slot) {
+    close_fd_if_valid(slot.output.log_fd);
+}
+
+bool wait_for_child_exit(pid_t pid) {
+    if (pid <= 0) {
+        return true;
+    }
+    while (true) {
+        const pid_t rc = waitpid(pid, nullptr, 0);
+        if (rc == pid) {
+            return true;
+        }
+        if (rc < 0 && errno == EINTR) {
+            continue;
+        }
+        return rc < 0 && errno == ECHILD;
+    }
+}
+
+void stop_pane_pipeout(PaneSlot &slot, bool terminate_process, bool wait_for_child) {
+    close_fd_if_valid(slot.output.pipeout.write_fd);
+    const pid_t pid = slot.output.pipeout.child_pid;
+    if (pid > 0 && terminate_process) {
+        if (kill(pid, SIGHUP) != 0 && errno != ESRCH) {
+            // Best-effort cleanup; if signaling fails for another reason the next wait/reap path still clears it.
+        }
+    }
+    if (pid > 0 && wait_for_child) {
+        wait_for_child_exit(pid);
+    }
+    slot.output.pipeout.child_pid = -1;
+}
+
+void cleanup_pane_outputs(PaneSlot &slot, bool wait_for_pipeout_child) {
+    stop_pane_log(slot);
+    stop_pane_pipeout(slot, true, wait_for_pipeout_child);
+}
+
+bool start_pane_log(PaneSlot &slot, const std::string &path) {
+    const int fd = open_output_file(path, O_APPEND);
+    if (fd < 0) {
+        return false;
+    }
+    stop_pane_log(slot);
+    slot.output.log_fd = fd;
+    return true;
+}
+
+void redirect_stdio_to_devnull();
+
+bool start_pane_pipeout(PaneSlot &slot, const std::string &command) {
+    stop_pane_pipeout(slot, false, true);
+
+    int pipe_fds[2] = {-1, -1};
+    if (pipe(pipe_fds) != 0) {
+        return false;
+    }
+    set_cloexec(pipe_fds[0]);
+    set_cloexec(pipe_fds[1]);
+
+    const pid_t pid = fork();
+    if (pid < 0) {
+        close(pipe_fds[0]);
+        close(pipe_fds[1]);
+        return false;
+    }
+    if (pid == 0) {
+        close(pipe_fds[1]);
+        redirect_stdio_to_devnull();
+        if (dup2(pipe_fds[0], STDIN_FILENO) < 0) {
+            _exit(1);
+        }
+        if (pipe_fds[0] > STDERR_FILENO) {
+            close(pipe_fds[0]);
+        }
+        execl("/bin/sh", "/bin/sh", "-c", command.c_str(), static_cast<char *>(nullptr));
+        _exit(127);
+    }
+
+    close(pipe_fds[0]);
+    slot.output.pipeout.write_fd = pipe_fds[1];
+    slot.output.pipeout.child_pid = pid;
+    return true;
+}
+
+bool write_capture_snapshot(const PaneSlot &slot, const std::string &path) {
+    const int fd = open_output_file(path, O_TRUNC);
+    if (fd < 0) {
+        return false;
+    }
+    const std::string snapshot = render_text_snapshot(slot.output.capture);
+    const bool ok = write_all(fd, snapshot.data(), snapshot.size());
+    close(fd);
+    return ok;
+}
+
+void record_pane_output(PaneSlot &slot, const char *data, size_t size) {
+    if (size == 0) {
+        return;
+    }
+
+    append_text_output(slot.output.capture, std::string(data, size), kCaptureBufferedLines);
+    if (slot.output.log_fd >= 0 && !write_all(slot.output.log_fd, data, size)) {
+        close_fd_if_valid(slot.output.log_fd);
+    }
+    if (slot.output.pipeout.write_fd >= 0 && !write_all(slot.output.pipeout.write_fd, data, size)) {
+        close_fd_if_valid(slot.output.pipeout.write_fd);
+    }
+}
+
+PaneSlot *find_pipeout_slot_by_pid(SessionState &session, pid_t pid) {
+    if (pid <= 0) {
+        return nullptr;
+    }
+    for (PaneSlot &slot : session.panes) {
+        if (slot.output.pipeout.child_pid == pid) {
+            return &slot;
+        }
+    }
+    return nullptr;
+}
+
+void redirect_stdio_to_devnull();
 bool apply_winsize(int master_fd, const winsize &ws);
 
 std::vector<size_t> collect_live_pane_indices(const SessionState &session) {
@@ -1068,14 +1277,14 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         return format_error("empty command");
     }
 
-    const std::vector<std::string> tokens = split_ascii_whitespace(command);
-    if (tokens.empty()) {
+    std::string name;
+    std::string rest;
+    if (!split_command_name_and_rest(command, name, rest)) {
         return format_error("empty command");
     }
 
-    const std::string &name = tokens[0];
     if (name == "new") {
-        if (tokens.size() != 1) {
+        if (!rest.empty()) {
             return format_usage(":new");
         }
         if (client.read_only) {
@@ -1092,16 +1301,13 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
     }
 
     if (name == "kill") {
-        if (tokens.size() != 2) {
-            return format_usage(":kill <pane_id>");
-        }
         if (client.read_only) {
             return format_error("read-only clients cannot run :kill");
         }
 
         int pane_id = -1;
-        if (!parse_non_negative_int(tokens[1], pane_id)) {
-            return format_error("pane_id must be a non-negative integer");
+        if (!parse_single_non_negative_int_argument(rest, pane_id)) {
+            return format_usage(":kill <pane_id>");
         }
 
         PaneSlot *slot = find_pane_slot(server.session, pane_id);
@@ -1111,6 +1317,8 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         if (slot->pane.child_reaped) {
             return format_ok("pane " + std::to_string(pane_id) + " is already exiting");
         }
+
+        cleanup_pane_outputs(*slot, true);
         if (slot->pane.child_pid > 0 && kill(slot->pane.child_pid, SIGHUP) != 0 && errno != ESRCH) {
             return format_error("failed to signal pane " + std::to_string(pane_id));
         }
@@ -1122,22 +1330,19 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
     }
 
     if (name == "focus") {
-        if (tokens.size() != 2) {
-            return format_usage(":focus <pane_id>");
-        }
         if (client.read_only) {
             return format_error("read-only clients cannot run :focus");
         }
 
         int pane_id = -1;
-        if (!parse_non_negative_int(tokens[1], pane_id)) {
-            return format_error("pane_id must be a non-negative integer");
+        if (!parse_single_non_negative_int_argument(rest, pane_id)) {
+            return format_usage(":focus <pane_id>");
         }
         return focus_pane(server.session, pane_id);
     }
 
     if (name == "next" || name == "prev") {
-        if (tokens.size() != 1) {
+        if (!rest.empty()) {
             return format_usage(name == "next" ? ":next" : ":prev");
         }
         if (client.read_only) {
@@ -1149,6 +1354,105 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_error("no panes available");
         }
         return focus_pane(server.session, pane_id);
+    }
+
+    if (name == "log") {
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :log");
+        }
+
+        int pane_id = -1;
+        std::string path_arg;
+        if (!parse_pane_and_tail(rest, pane_id, path_arg)) {
+            return format_usage(":log <pane_id> <file_path>");
+        }
+
+        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        if (slot == nullptr) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        if (!start_pane_log(*slot, path_arg)) {
+            return format_error("failed to open log target");
+        }
+        return format_ok("logging pane " + std::to_string(pane_id));
+    }
+
+    if (name == "log-stop") {
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :log-stop");
+        }
+
+        int pane_id = -1;
+        if (!parse_single_non_negative_int_argument(rest, pane_id)) {
+            return format_usage(":log-stop <pane_id>");
+        }
+
+        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        if (slot == nullptr) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        stop_pane_log(*slot);
+        return format_ok("stopped log for pane " + std::to_string(pane_id));
+    }
+
+    if (name == "pipeout") {
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :pipeout");
+        }
+
+        int pane_id = -1;
+        std::string command_arg;
+        if (!parse_pane_and_tail(rest, pane_id, command_arg)) {
+            return format_usage(":pipeout <pane_id> <cmd>");
+        }
+
+        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        if (slot == nullptr) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        if (!start_pane_pipeout(*slot, command_arg)) {
+            return format_error("failed to start pipeout");
+        }
+        return format_ok("pipeout started for pane " + std::to_string(pane_id));
+    }
+
+    if (name == "pipeout-stop") {
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :pipeout-stop");
+        }
+
+        int pane_id = -1;
+        if (!parse_single_non_negative_int_argument(rest, pane_id)) {
+            return format_usage(":pipeout-stop <pane_id>");
+        }
+
+        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        if (slot == nullptr) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        stop_pane_pipeout(*slot, false, true);
+        return format_ok("stopped pipeout for pane " + std::to_string(pane_id));
+    }
+
+    if (name == "capture") {
+        if (client.read_only) {
+            return format_error("read-only clients cannot run :capture");
+        }
+
+        int pane_id = -1;
+        std::string path_arg;
+        if (!parse_pane_and_tail(rest, pane_id, path_arg)) {
+            return format_usage(":capture <pane_id> <file_path>");
+        }
+
+        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        if (slot == nullptr) {
+            return format_error("pane " + std::to_string(pane_id) + " does not exist");
+        }
+        if (!write_capture_snapshot(*slot, path_arg)) {
+            return format_error("failed to write capture file");
+        }
+        return format_ok("captured pane " + std::to_string(pane_id));
     }
 
     return format_error("unknown command '" + name + "'");
@@ -1217,6 +1521,9 @@ void remove_client(std::vector<ClientConnection> &clients, size_t index) {
 }
 
 void broadcast_output(ServerState &server, int pane_id, const char *data, size_t size) {
+    if (PaneSlot *slot = find_pane_slot(server.session, pane_id); slot != nullptr) {
+        record_pane_output(*slot, data, size);
+    }
     server.session.backlog.append(pane_id, data, size);
     for (size_t i = 0; i < server.clients.size();) {
         if (!send_message(server.clients[i].fd, MessageType::kServerOutput, pane_id, 0, data, size)) {
@@ -1305,6 +1612,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
     if (server.listen_fd < 0) {
         perr("listen socket");
         for (PaneSlot &slot : server.session.panes) {
+            cleanup_pane_outputs(slot, true);
             if (slot.pane.child_pid > 0) {
                 kill(slot.pane.child_pid, SIGHUP);
                 waitpid(slot.pane.child_pid, nullptr, 0);
@@ -1367,12 +1675,18 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 if (pid <= 0) {
                     break;
                 }
+                if (PaneSlot *pipe_slot = find_pipeout_slot_by_pid(server.session, pid); pipe_slot != nullptr) {
+                    close_fd_if_valid(pipe_slot->output.pipeout.write_fd);
+                    pipe_slot->output.pipeout.child_pid = -1;
+                    continue;
+                }
                 for (PaneSlot &slot : server.session.panes) {
                     if (pid != slot.pane.child_pid) {
                         continue;
                     }
                     slot.pane.child_reaped = true;
                     slot.state = PaneState::kReaped;
+                    cleanup_pane_outputs(slot, true);
                     if (WIFEXITED(status)) {
                         slot.pane.exit_code = WEXITSTATUS(status);
                         slot.pane.exit_signal = 0;
@@ -1480,6 +1794,11 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         close_fd_if_valid(client.fd);
     }
     for (PaneSlot &slot : server.session.panes) {
+        cleanup_pane_outputs(slot, true);
+        if (slot.pane.child_pid > 0 && !slot.pane.child_reaped) {
+            kill(slot.pane.child_pid, SIGHUP);
+            waitpid(slot.pane.child_pid, nullptr, 0);
+        }
         close_fd_if_valid(slot.pane.master_fd);
         slot.state = PaneState::kDestroyed;
     }
@@ -1628,7 +1947,7 @@ int client_process(int socket_fd, bool read_only) {
                                         done = true;
                                         break;
                                     }
-                                } else if (!redraw_command_prompt(command_buffer)) {
+                                } else if (!begin_command_prompt()) {
                                     done = true;
                                     break;
                                 }
@@ -1658,7 +1977,7 @@ int client_process(int socket_fd, bool read_only) {
                                     done = true;
                                     break;
                                 }
-                            } else if (!redraw_command_prompt(command_buffer)) {
+                            } else if (!begin_command_prompt()) {
                                 done = true;
                                 break;
                             }
@@ -1724,8 +2043,8 @@ int client_process(int socket_fd, bool read_only) {
             } else if (message.type == MessageType::kServerOutput ||
                        message.type == MessageType::kServerStatus) {
                 const std::string chunk(message.payload.begin(), message.payload.end());
-                append_client_output(view_state, message.arg0, chunk);
                 if (message.type == MessageType::kServerStatus) {
+                    view_state.local_status = chunk;
                     if (use_structured_client_render(view_state)) {
                         if (!ensure_render_surface() ||
                             !render_client_view(view_state, command_buffer, input_mode)) {
@@ -1734,13 +2053,17 @@ int client_process(int socket_fd, bool read_only) {
                     } else if (!show_local_status(chunk)) {
                         done = true;
                     }
-                } else if (use_structured_client_render(view_state)) {
-                    if (!ensure_render_surface() ||
-                        !render_client_view(view_state, command_buffer, input_mode)) {
+                } else {
+                    view_state.local_status.clear();
+                    append_client_output(view_state, message.arg0, chunk);
+                    if (use_structured_client_render(view_state)) {
+                        if (!ensure_render_surface() ||
+                            !render_client_view(view_state, command_buffer, input_mode)) {
+                            done = true;
+                        }
+                    } else if (!write_stdout(chunk)) {
                         done = true;
                     }
-                } else if (!write_stdout(chunk)) {
-                    done = true;
                 }
             } else if (message.type == MessageType::kServerRedraw) {
                 const std::string redraw(message.payload.begin(), message.payload.end());

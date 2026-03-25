@@ -1,0 +1,1709 @@
+
+mini-tmux: attached
+[?2004h]0;kaiyi@Kaiyi-Feng: ~/lab1-student[01;32mkaiyi@Kaiyi-Feng[00m:[01;34m~/lab1-student[00m$ 
+:
+:n
+:ne
+:new     
+ok: created pane 1
+[?1049h[H[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: created pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: created pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:f[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:fo[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:foc[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focu[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus [?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus 0[?25h         [?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;34H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;52H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;52H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0e                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;53H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0ec                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;54H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0ech                          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;55H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;56H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;57H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo P                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;58H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PA                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;59H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PAN                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;60H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE                    
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;61H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;62H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_Z                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;63H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZE                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;64H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZER                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;65H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;66H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;67H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_D             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;68H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DE            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;69H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEB           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;70H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBU          
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;71H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;72H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;34H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:f[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:fo[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:foc[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focu[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus [?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus 1[?25h         [?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;52H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ e                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;35H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ec                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;36H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ech                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;37H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo                                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;38H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo                                           
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;39H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo P                                         
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;40H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PA                                        
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;41H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PAN                                       
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;42H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE                                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;43H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_                                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;44H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_O                                    
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;45H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ON                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;46H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE                                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;47H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;48H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_D                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;49H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DE                               
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;50H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DEB                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;51H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DEBU                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;52H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DEBUG                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;53H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DEBUG                            
+PANE_ONE_DEBUG                                                                  
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[17;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_DEBUG                            
+PANE_ONE_DEBUG                                                                  
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[17;34H[?25h

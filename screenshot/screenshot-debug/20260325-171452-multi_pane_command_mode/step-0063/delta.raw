@@ -1,0 +1,26 @@
+[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 0echo PANE_ZERO_DEBUG         
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ ok: focused pane 1                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;48H[?25h

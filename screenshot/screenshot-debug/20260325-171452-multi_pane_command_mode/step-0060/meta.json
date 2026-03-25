@@ -1,0 +1,17 @@
+{
+  "index": 60,
+  "kind": "key",
+  "label": "run command in pane 1: O",
+  "input_bytes_hex": "4f",
+  "delta_bytes": 2077,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 15,
+    "col": 45,
+    "visible": true
+  },
+  "timestamp": 1774430105.6572754,
+  "key_label": "O"
+}

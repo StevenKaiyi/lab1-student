@@ -1,0 +1,28 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 150,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "echo marker",
+      "keys": "echo SCREENSHOT_DEBUG_BASIC<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "shell settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "print cwd",
+      "keys": "pwd<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "final prompt",
+      "ms": 500
+    }
+  ]
+}

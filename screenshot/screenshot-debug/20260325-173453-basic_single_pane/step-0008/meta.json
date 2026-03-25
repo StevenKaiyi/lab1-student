@@ -1,0 +1,17 @@
+{
+  "index": 8,
+  "kind": "key",
+  "label": "echo marker: R",
+  "input_bytes_hex": "52",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 3,
+    "col": 42,
+    "visible": true
+  },
+  "timestamp": 1774431296.7318695,
+  "key_label": "R"
+}

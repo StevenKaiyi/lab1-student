@@ -1,0 +1,24 @@
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ZERO_DEBUG                           
+PANE_ZERO_DEBUG                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ echo PANE_ONE_D                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                

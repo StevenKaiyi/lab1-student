@@ -1,0 +1,17 @@
+{
+  "index": 6,
+  "kind": "key",
+  "label": "create pane 1: <Enter>",
+  "input_bytes_hex": "0d",
+  "delta_bytes": 8345,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 15,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774430095.3320284,
+  "key_label": "<Enter>"
+}

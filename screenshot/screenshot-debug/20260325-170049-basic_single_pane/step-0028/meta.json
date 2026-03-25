@@ -1,0 +1,17 @@
+{
+  "index": 28,
+  "kind": "key",
+  "label": "echo marker: <Enter>",
+  "input_bytes_hex": "0d",
+  "delta_bytes": 139,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 5,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774429255.2001524,
+  "key_label": "<Enter>"
+}

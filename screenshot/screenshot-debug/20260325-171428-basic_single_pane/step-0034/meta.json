@@ -1,0 +1,17 @@
+{
+  "index": 34,
+  "kind": "wait",
+  "label": "final prompt",
+  "input_bytes_hex": "",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 7,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774430076.2210743,
+  "duration_ms": 500
+}

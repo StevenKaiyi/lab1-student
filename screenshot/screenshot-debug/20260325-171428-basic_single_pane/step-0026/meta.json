@@ -1,0 +1,17 @@
+{
+  "index": 26,
+  "kind": "key",
+  "label": "echo marker: I",
+  "input_bytes_hex": "49",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 3,
+    "col": 60,
+    "visible": true
+  },
+  "timestamp": 1774430074.3008595,
+  "key_label": "I"
+}

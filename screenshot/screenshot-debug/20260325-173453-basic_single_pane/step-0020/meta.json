@@ -1,0 +1,17 @@
+{
+  "index": 20,
+  "kind": "key",
+  "label": "echo marker: U",
+  "input_bytes_hex": "55",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 3,
+    "col": 54,
+    "visible": true
+  },
+  "timestamp": 1774431298.5598636,
+  "key_label": "U"
+}

@@ -1,0 +1,17 @@
+{
+  "index": 31,
+  "kind": "key",
+  "label": "print cwd: w",
+  "input_bytes_hex": "77",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 5,
+    "col": 36,
+    "visible": true
+  },
+  "timestamp": 1774429898.8894567,
+  "key_label": "w"
+}

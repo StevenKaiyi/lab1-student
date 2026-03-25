@@ -1,0 +1,17 @@
+{
+  "index": 33,
+  "kind": "key",
+  "label": "print cwd: <Enter>",
+  "input_bytes_hex": "0d",
+  "delta_bytes": 141,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 7,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774431300.883803,
+  "key_label": "<Enter>"
+}

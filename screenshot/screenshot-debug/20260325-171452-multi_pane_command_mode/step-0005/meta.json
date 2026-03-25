@@ -1,0 +1,17 @@
+{
+  "index": 5,
+  "kind": "key",
+  "label": "create pane 1: w",
+  "input_bytes_hex": "77",
+  "delta_bytes": 6,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 7,
+    "col": 5,
+    "visible": true
+  },
+  "timestamp": 1774430095.1376975,
+  "key_label": "w"
+}

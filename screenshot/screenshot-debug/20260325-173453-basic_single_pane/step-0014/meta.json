@@ -1,0 +1,17 @@
+{
+  "index": 14,
+  "kind": "key",
+  "label": "echo marker: O",
+  "input_bytes_hex": "4f",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 3,
+    "col": 48,
+    "visible": true
+  },
+  "timestamp": 1774431297.6449287,
+  "key_label": "O"
+}

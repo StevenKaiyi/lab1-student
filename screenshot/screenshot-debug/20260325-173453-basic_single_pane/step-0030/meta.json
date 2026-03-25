@@ -1,0 +1,17 @@
+{
+  "index": 30,
+  "kind": "key",
+  "label": "print cwd: p",
+  "input_bytes_hex": "70",
+  "delta_bytes": 1,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": false,
+  "cursor": {
+    "row": 5,
+    "col": 35,
+    "visible": true
+  },
+  "timestamp": 1774431300.4287822,
+  "key_label": "p"
+}

@@ -1,0 +1,17 @@
+{
+  "index": 54,
+  "kind": "key",
+  "label": "run command in pane 1:  ",
+  "input_bytes_hex": "20",
+  "delta_bytes": 2077,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 15,
+    "col": 39,
+    "visible": true
+  },
+  "timestamp": 1774430104.549766,
+  "key_label": " "
+}

@@ -75,3 +75,143 @@
 - “忽略 SIGPIPE 本身是 bug”：这更像权衡，不足以单独列为问题。
 - “backlog 1MB 一定过小”或“必须立刻做 layout 缓存”：属于优化建议，不是当前阶段最有价值的缺陷。
 - “结构化渲染完全未实现”：当前说法不准确，已有简化版 redraw/render 链路，只是终端语义还不完整。
+
+## 7. 多 Pane 渲染问题：tmux 方案适用性分析
+
+### 问题概述
+
+当前多 pane 渲染存在以下 bug：
+
+- 光标位置错误（ANSI 序列解析不完整）
+- 高频输出时卡顿（每次完整重绘）
+- 多 pane 并发输出导致画面撕裂
+- 带颜色输出显示异常
+
+### tmux 渲染方案在 mini-tmux 的适用性
+
+| 方案 | 适用性 | 推荐度 | 理由 |
+|------|--------|--------|------|
+| 服务端虚拟屏幕 | ❌ 不适合 | 0/5 | 复杂度过高，与 lab “从零实现” 的初衷不符 |
+| 差分渲染 | ✅ 适合 | 4/5 | 可以显著改善性能，实现难度中等 |
+| 服务端 ANSI 解析 | ⚠️ 部分适合 | 2/5 | 只需补全常用序列，不必实现完整终端模拟器 |
+| 服务端计算 layout | ✅ 已实现 | 5/5 | 已经在做，这是正确的方向 |
+| 简化客户端职责 | ⚠️ 需配合 | 3/5 | 需要服务端做更多工作 |
+
+### 推荐的改进方案（按优先级）
+
+#### 阶段 1：快速修复（低成本，2-4 小时）
+
+| 修改 | 预期解决 | 代码量 |
+|------|---------|--------|
+| 添加 CSI 参数解析 | 光标位置错误 | ~50 行 |
+| 补全常用序列（A/B/H/J） | TUI 程序兼容性 | ~80 行 |
+| 过滤 SGR（颜色序列） | 颜色异常显示 | ~20 行 |
+| 输出节流（合并多次输出后渲染） | 高频输出卡顿 | ~30 行 |
+
+#### 阶段 2：性能优化（中成本，6-10 小时）
+
+| 修改 | 预期解决 | 代码量 |
+|------|---------|--------|
+| 差分渲染（记录上一帧） | 画面撕裂、CPU 占用 | ~200 行 |
+| 智能刷新（只在有变化时渲染） | 减少无效重绘 | ~50 行 |
+| 批量消息处理 | 多 pane 并发输出混乱 | ~100 行 |
+
+#### 阶段 3：架构改进（高成本，可选，10-15 小时）
+
+| 修改 | 预期解决 | 代码量 |
+|------|---------|--------|
+| 服务端输出缓冲 | detach/reattach 状态一致性 | ~150 行 |
+| 客户端状态简化 | 减少客户端复杂度 | 重构客户端 |
+
+### 具体实现建议
+
+#### 1. 补全 ANSI CSI 序列（必须）
+
+在 `handle_csi_final()` 中添加参数解析：
+
+```cpp
+void handle_csi_final(ClientPaneBuffer &buffer, char final_byte,
+                   const std::string &params) {
+    int n = 1;  // 默认参数
+    if (!params.empty()) {
+        n = std::stoi(params);
+        if (n < 1) n = 1;
+    }
+
+    switch (final_byte) {
+        case 'A': buffer->cursor_col -= n; break;  // 上移
+        case 'B': buffer->cursor_col += n; break;  // 下移
+        case 'C': buffer->cursor_col += n; break;  // 右移（已有，需改）
+        case 'D': buffer->cursor_col -= n; break;  // 左移（已有，需改）
+        case 'H': /* 光标定位 <row>;<col>H */ break;
+        case 'J': /* 清屏 */ break;
+        case 'm': /* SGR，至少过滤掉 */ break;
+    }
+}
+```
+
+#### 2. 输出节流（应该做）
+
+在事件循环中添加消息队列，合并多个输出消息后统一渲染：
+
+```cpp
+// 在 ClientViewState 中添加
+std::vector<Message> pending_outputs;
+
+// 收到输出时先入队，暂不渲染
+if (message.type == MessageType::kServerOutput) {
+    view_state.pending_outputs.push_back(message);
+}
+
+// 定时或在有其他事件时批量处理并渲染
+void flush_pending_outputs() {
+    for (auto &msg : pending_outputs) {
+        append_client_output(view_state, msg.arg0, ...);
+    }
+    pending_outputs.clear();
+    render_client_view(view_state, command_buffer, input_mode);
+}
+```
+
+#### 3. 差分渲染（可以做）
+
+记录上一帧，只在有变化时渲染：
+
+```cpp
+struct ClientViewState {
+    // ... 现有字段 ...
+    std::string last_rendered_frame;
+};
+
+bool render_client_view_diff(const ClientViewState &view, ...) {
+    std::string new_frame = build_full_frame(view, ...);
+
+    if (new_frame != view.last_rendered_frame) {
+        write_stdout(new_frame);
+        view.last_rendered_frame = new_frame;
+    }
+}
+```
+
+### 不推荐的方向
+
+| 方案 | 不推荐原因 |
+|------|-----------|
+| 完整终端模拟器 | 复杂度过高，超出 lab 范围 |
+| ncurses/libtickit | lab 要求不得使用第三方库 |
+| 完全重写渲染层 | 风险太大，可能破坏已通过的功能 |
+
+### 核心原则
+
+在 lab 范围内，用最小的改动解决最明显的问题。差分渲染 + ANSI 补全足以覆盖 80% 的渲染问题。
+
+### 验证策略
+
+```bash
+# 修改后验证
+python3 test_single_pane.py       # 基础 I/O
+python3 test_interactive_render.py # 交互渲染
+python3 test_multi_pane_layout.py  # 多 pane 布局
+python3 test_focus_prefix.py       # 焦点切换
+python3 test_detach_reattach.py    # 会话管理
+```

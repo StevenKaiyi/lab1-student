@@ -9,7 +9,8 @@
       "Bash(python3 test_single_pane.py)",
       "Bash(python3 test_multi_pane_layout.py)",
       "Bash(python3 evaluator.py --mode quick)",
-      "Bash(python3 evaluator.py --help)"
+      "Bash(python3 evaluator.py --help)",
+      "WebSearch"
     ]
   }
 }

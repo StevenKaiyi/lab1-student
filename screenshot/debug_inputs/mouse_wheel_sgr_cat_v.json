@@ -1,0 +1,56 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 120,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "start cat -v",
+      "keys": "cat -v<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "cat ready",
+      "ms": 300
+    },
+    {
+      "type": "snapshot",
+      "label": "before wheel"
+    },
+    {
+      "type": "keys",
+      "label": "wheel up sgr",
+      "keys": "<Esc>[<LT>64;40;12M",
+      "per_key": false,
+      "settle_ms": 250
+    },
+    {
+      "type": "wait",
+      "label": "after wheel up",
+      "ms": 150
+    },
+    {
+      "type": "keys",
+      "label": "wheel down sgr",
+      "keys": "<Esc>[<LT>65;40;12M",
+      "per_key": false,
+      "settle_ms": 250
+    },
+    {
+      "type": "wait",
+      "label": "after wheel down",
+      "ms": 150
+    },
+    {
+      "type": "keys",
+      "label": "stop cat",
+      "keys": "<C-c>"
+    },
+    {
+      "type": "wait",
+      "label": "prompt restore",
+      "ms": 200
+    }
+  ]
+}

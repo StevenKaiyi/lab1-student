@@ -1,0 +1,17 @@
+{
+  "index": 18,
+  "kind": "key",
+  "label": "fragmented shift wheel up: 1",
+  "input_bytes_hex": "31",
+  "delta_bytes": 1995,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 12,
+    "visible": true
+  },
+  "timestamp": 1774491356.9626107,
+  "key_label": "1"
+}

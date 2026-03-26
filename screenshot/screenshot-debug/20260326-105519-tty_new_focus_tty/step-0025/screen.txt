@@ -1,0 +1,24 @@
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/21                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/10                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+:focus                                                                          

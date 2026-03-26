@@ -1,0 +1,17 @@
+{
+  "index": 10,
+  "kind": "keys",
+  "label": "wheel up sgr",
+  "input_bytes_hex": "1b5b3c36343b34303b31324d",
+  "delta_bytes": 1995,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 14,
+    "visible": true
+  },
+  "timestamp": 1774491305.2101154,
+  "token_count": 12
+}

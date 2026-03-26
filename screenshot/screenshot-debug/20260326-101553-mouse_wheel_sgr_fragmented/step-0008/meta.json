@@ -1,0 +1,17 @@
+{
+  "index": 8,
+  "kind": "wait",
+  "label": "cat ready",
+  "input_bytes_hex": "",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 1,
+    "visible": true
+  },
+  "timestamp": 1774491356.1002,
+  "duration_ms": 300
+}

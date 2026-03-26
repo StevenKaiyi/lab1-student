@@ -1,0 +1,17 @@
+{
+  "index": 1,
+  "kind": "key",
+  "label": "print tty: t",
+  "input_bytes_hex": "74",
+  "delta_bytes": 1994,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 2,
+    "col": 35,
+    "visible": true
+  },
+  "timestamp": 1774493251.7671685,
+  "key_label": "t"
+}

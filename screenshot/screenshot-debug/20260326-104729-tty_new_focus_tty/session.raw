@@ -1,0 +1,939 @@
+
+mini-tmux: attached
+[?1049h[H[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;34H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ t                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;35H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tt                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;36H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[2;37H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[3;1H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;1H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;34H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:n[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:ne[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:new[?25h[K[?25l[H[2JPane 0 [active] | ok: created pane 1                                            
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active] | ok: created pane 1                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active] | ok: created pane 1                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ t                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;35H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tt                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;36H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[14;37H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[15;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[16;1H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[16;34H[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:f[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:fo[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:foc[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focu[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus[?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus [?25h[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[999;1H:focus 0[?25h[K[?25l[H[2JPane 0                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1 [active] | ok: focused pane 0                                            
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[16;34H[?25h[?25l[H[2JPane 0 [active] | ok: focused pane 0                                            
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;34H[?25h[?25l[H[2JPane 0 [active] | ok: focused pane 0                                            
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;34H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ t                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;35H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ tt                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;36H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[4;37H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[5;1H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[6;1H[?25h[?25l[H[2JPane 0 [active]                                                                 
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/19                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/23                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+[6;34H[?25h

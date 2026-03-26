@@ -1,0 +1,24 @@
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/16                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+--------------------------------------------------------------------------------
+Pane 1                                                                          
+kaiyi@Kaiyi-Feng:~/lab1-student$ tty                                            
+/dev/pts/17                                                                     
+kaiyi@Kaiyi-Feng:~/lab1-student$                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                

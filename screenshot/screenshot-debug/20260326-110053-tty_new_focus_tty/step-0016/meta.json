@@ -1,0 +1,17 @@
+{
+  "index": 16,
+  "kind": "key",
+  "label": "pane1 tty: <Enter>",
+  "input_bytes_hex": "0d",
+  "delta_bytes": 6562,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 16,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774494059.273216,
+  "key_label": "<Enter>"
+}

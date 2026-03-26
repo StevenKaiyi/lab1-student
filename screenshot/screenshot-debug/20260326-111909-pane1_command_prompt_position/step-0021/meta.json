@@ -1,0 +1,17 @@
+{
+  "index": 21,
+  "kind": "key",
+  "label": "enter command mode in pane1: e",
+  "input_bytes_hex": "65",
+  "delta_bytes": 2202,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 16,
+    "col": 37,
+    "visible": true
+  },
+  "timestamp": 1774495155.5834403,
+  "key_label": "e"
+}

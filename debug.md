@@ -638,3 +638,274 @@ kaiyi@...$ ok: focused pane 1
 5. ???????? `mini_tmux.cpp` ???
 
 ??????????????????????????
+
+## `tty -> :new -> tty -> :focus 0 -> tty` 后光标掉到分割线附近
+
+### 复现
+
+新增了一个精确场景：
+
+- `screenshot/debug_inputs/tty_new_focus_tty.json`
+
+步骤和手工复现一致：
+
+1. pane 0 里执行 `tty`
+2. `Ctrl+B :new`
+3. pane 1 里执行 `tty`
+4. `Ctrl+B :focus 0`
+5. pane 0 再执行 `tty`
+
+初次复现产物：
+
+- `screenshot/screenshot-debug/20260326-102357-tty_new_focus_tty/`
+
+### 现象
+
+在 `:focus 0` 之后，active pane 的光标没有回到 pane 0 的 prompt，而是跳到了分割线附近。随后输入 `tty` 时，字符会出现在 pane 0 中部，看起来像“光标掉到 divider 上方一行”。
+
+关键证据：
+
+- `step-0027/meta.json` 里光标在第 11 行，而不是 pane 0 prompt 所在的第 4 行
+- `step-0031/screen.txt` 里，`tty` 被画在 pane 0 中部
+- `step-0027/delta.raw` 里可以看到 `:focus 0` 之后的重绘把光标放到了 `CSI 11;34H`
+
+### 根因
+
+`TextScreenBuffer` 之前只有：
+
+- `lines`
+- `current_line`
+- `cursor_col`
+
+这个模型默认“当前输入行永远是最后一行”。但 shell/readline 在 `tty`、resize、focus 切换之后会发带光标移动的 CSI 序列；旧实现没有跟踪 `cursor_row`，也没有保存 CSI 参数，因此：
+
+- 旧 prompt 会保留在上面的历史行里
+- client redraw 时又把“最后一行”当成当前输入行
+- focused pane 的光标最终被错误地算到了 body 底部附近
+
+### 第一轮修复
+
+修复点：
+
+- `mini_tmux.cpp`
+
+改动：
+
+- 给 `TextScreenBuffer` 增加 `cursor_row` 和 `csi_buffer`
+- 把 pane capture 从“最后一行模型”改成“多行 + 行坐标模型”
+- 解析并处理常见的 CSI 光标/清屏控制序列：`A/B/C/D/H/f/J/K`
+- `build_redraw_payload()` 改为把每个 pane 的 `cursor_row` 和 `cursor_col` 一起发给 client
+- `parse_redraw_buffers()` / `render_client_view()` 改为按真实 `cursor_row` 定位 focused pane 光标
+
+### 第一轮验证
+
+重新编译后运行：
+
+```bash
+python3 screenshot/screenshot_debug.py screenshot/debug_inputs/tty_new_focus_tty.json
+```
+
+验证产物：
+
+- `screenshot/screenshot-debug/20260326-104729-tty_new_focus_tty/`
+
+结果：
+
+- `step-0027/meta.json` 里光标从原来的第 11 行回到了第 4 行
+- `step-0031/meta.json` 里继续输入 `tty` 时光标仍在第 4 行
+
+这说明“光标掉到 divider 附近”的主问题已经被修掉。
+
+## 剩余问题：光标仍比预期低一行，`Pane 0` 头偶尔消失
+
+### 现象
+
+第一轮修完后还剩两个显示问题：
+
+- 光标有时会出现在“应该在的位置的下一行”
+- `Pane 0 [active]` 的 header 偶尔会被顶掉，只剩下 `Pane 1`
+
+### 根因
+
+问题不在 pane capture，而在 client 端的整屏重绘方式。
+
+旧版 `render_client_view()` 是这样画帧的：
+
+- 先 `CSI H` + `CSI 2J`
+- 然后把每一行内容直接顺序拼到一个字符串里
+- 行与行之间用 `\r\n`
+
+这在 pane 宽度刚好等于终端宽度时会有副作用：
+
+- header 或分隔线写满一整行以后，终端可能先触发自动换行
+- 紧接着再收到 `\r\n`，就会多吃掉一行
+- 后面的 pane header / body / cursor 定位都会整体下沉，表现成 header 消失或光标低一行
+
+也就是说，第一轮修复解决了“cursor_row 算错”，第二轮修复解决的是“frame 写法本身会让终端多走一行”。
+
+### 第二轮修复
+
+仍然修改：
+
+- `mini_tmux.cpp`
+
+把 `render_client_view()` 改成：
+
+- 帧开始时临时关闭自动换行：`CSI ?7l`
+- 每一行都用绝对坐标写：`CSI <row>;1H`
+- 写完本行内容后再用 `CSI K` 清尾
+- 帧结束前恢复自动换行：`CSI ?7h`
+
+这样每一行都固定落在预期的屏幕行号上，不再依赖“打印满宽文本 + CRLF”的副作用。
+
+### 第二轮验证
+
+注意：有一次验证把 `make` 和截图复现并行跑了，场景拿到了旧二进制，所以看到的还是旧 frame。后面改成串行验证。
+
+最终验证命令：
+
+```bash
+make
+python3 screenshot/screenshot_debug.py screenshot/debug_inputs/tty_new_focus_tty.json
+```
+
+最终验证产物：
+
+- `screenshot/screenshot-debug/20260326-110053-tty_new_focus_tty/`
+
+关键证据：
+
+- `step-0031/delta.raw` 的十六进制开头已经变成：`ESC [?25l ESC [?7l ESC [H ESC [2J ESC [1;1H ...`
+- 说明新 renderer 的“禁用自动换行 + 按绝对行号写”已经真正生效
+- `step-0027/screen.txt` 里 `Pane 0 [active] | ok: focused pane 0` 仍然存在
+- `step-0031/screen.txt` / `step-0034/screen.txt` 里 `Pane 0 [active]` 不再消失
+- `step-0031/meta.json` 里光标在第 4 行第 37 列，和 pane 0 prompt 所在行一致
+
+### 结论
+
+这组问题实际上分成两层：
+
+1. pane capture 没有跟踪 `cursor_row`，导致 focus 后把 prompt 错认成 pane 底部附近的一行
+2. client redraw 用顺序文本 + CRLF 刷整屏，导致满宽行触发自动换行，进而把 header 和光标整体顶歪
+
+两轮修完之后：
+
+- focus 后光标不会再掉到 divider 附近
+- `Pane 0` header 不会再被吃掉
+- 光标也不会再稳定地下沉一行
+
+## `Ctrl+B :...` 命令模式回显位置错误
+
+### 初始现象
+
+按 `Ctrl+B` 进入命令模式后，输入的命令（例如 `:new`）会回显到终端最底下一行，而不是当前 active pane 的正确位置。
+
+最初使用的复现场景：
+
+- `screenshot/debug_inputs/multi_pane_command_mode.json`
+
+对应 run：
+
+- `screenshot/screenshot-debug/20260326-110549-multi_pane_command_mode/`
+
+关键证据：
+
+- `step-0002/screen.txt` 里只在最后一行看到 `:`
+- `step-0005/screen.txt` 里 `:new` 也仍然在最后一行
+- 根因在 `render_client_view()` 命令模式分支里直接用了 `CSI 999;1H`
+
+也就是 client 一旦进入 `ClientInputMode::kCommand`，就把命令缓冲强制画到底部，而没有考虑当前 pane 的真实光标位置。
+
+### 第一次尝试：把命令回显放到 pane header
+
+第一反应是：既然底行不对，那就把命令缓冲并到 active pane 的 header 上。
+
+对应修改后，重新跑：
+
+- `screenshot/screenshot-debug/20260326-111027-multi_pane_command_mode/`
+
+结果：
+
+- `step-0002/screen.txt` 变成 `Pane 0 [active] | :`
+- `step-0005/screen.txt` 变成 `Pane 0 [active] | :new`
+
+这说明“底行回显”问题被消掉了，但这个修法仍然不对，因为命令并不应该永远固定在 pane 第一行。
+
+### 更精确的反例
+
+用户给出了更准确的场景：
+
+1. pane 0 里执行 `tty`
+2. `Ctrl+B :new`
+3. pane 1 里执行 `tty`
+4. 在 pane 1 里按 `Ctrl+B :new`
+
+这时 `:new` 应该出现在 pane 1 当前 prompt 那一行，而不是 pane 1 header。
+
+为此新增了一个专门场景：
+
+- `screenshot/debug_inputs/pane1_command_prompt_position.json`
+
+第一次跑这个场景时，仍然能看到错误行为：
+
+- `screenshot/screenshot-debug/20260326-111450-pane1_command_prompt_position/`
+- `step-0019/screen.txt` 到 `step-0022/screen.txt` 里，`:`, `:n`, `:ne`, `:new` 都出现在 `Pane 1 [active]` 那一行
+
+同时，进入命令模式之前 pane 1 的真实光标位置其实已经很明确：
+
+- `step-0017/meta.json` 里光标在第 16 行第 34 列
+
+也就是说，真正正确的行为应该是：命令缓冲跟随 active pane 当前的光标行，而不是固定在 header，也不是固定在底行。
+
+### 最终修复
+
+仍然修改：
+
+- `mini_tmux.cpp`
+
+做法：
+
+1. 先像普通模式一样，根据 active pane 的 `cursor_row` / `cursor_col` 计算出真实光标位置
+2. 如果 `input_mode == ClientInputMode::kCommand`：
+   - 不再把命令写到底行
+   - 也不再把命令拼到 header
+   - 而是在 active pane 当前光标位置覆盖写入 `:` + `command_buffer`
+3. 再把光标放到命令字符串末尾
+
+这样命令模式就真正“贴着 pane 当前输入位置”显示，而不是依附于某个固定 UI 行。
+
+### 最终验证
+
+注意：中间又有一次把 `make` 和复现并行跑了，导致截图吃到旧二进制；后面改成串行验证。
+
+最终串行验证：
+
+```bash
+make
+python3 screenshot/screenshot_debug.py screenshot/debug_inputs/pane1_command_prompt_position.json
+```
+
+最终 run：
+
+- `screenshot/screenshot-debug/20260326-111909-pane1_command_prompt_position/`
+
+关键证据：
+
+- `step-0019/screen.txt` 里，pane 1 的 prompt 行变成 `kaiyi@...$ :`
+- `step-0022/screen.txt` 里，同一行变成 `kaiyi@...$ :new`
+- `step-0022/meta.json` 里光标在第 16 行第 38 列
+- 这和进入命令模式前 `step-0017/meta.json` 给出的 pane 1 prompt 所在行是一致的
+
+### 结论
+
+命令模式回显位置这个问题一共经历了三步定位：
+
+1. 先确认旧逻辑是硬编码到底行（`CSI 999;1H`）
+2. 再确认“改到 pane header”虽然消除了底行回显，但仍然不是正确语义
+3. 最终确定正确行为应该是：命令缓冲覆盖在 active pane 当前真实光标位置
+
+最终修完后：
+
+- 命令模式不再回显到底行
+- 也不会固定显示在 pane 第一行
+- 而是跟随 active pane 当前 prompt 所在行显示

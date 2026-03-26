@@ -1,0 +1,17 @@
+{
+  "index": 24,
+  "kind": "key",
+  "label": "fragmented ctrl wheel down: <LT>",
+  "input_bytes_hex": "3c",
+  "delta_bytes": 1995,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 18,
+    "visible": true
+  },
+  "timestamp": 1774491357.539692,
+  "key_label": "<LT>"
+}

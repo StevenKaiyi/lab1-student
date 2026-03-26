@@ -1,0 +1,18 @@
+{
+  "index": 0,
+  "kind": "initial",
+  "label": "initial settle",
+  "input_bytes_hex": "",
+  "delta_bytes": 2221,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 2,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774495094.8952584,
+  "scenario": "pane1_command_prompt_position.json",
+  "instance": "screenshot-debug-23087"
+}

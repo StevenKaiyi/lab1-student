@@ -1,0 +1,17 @@
+{
+  "index": 4,
+  "kind": "key",
+  "label": "start cat -v:  ",
+  "input_bytes_hex": "20",
+  "delta_bytes": 1995,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 38,
+    "visible": true
+  },
+  "timestamp": 1774491355.5265253,
+  "key_label": " "
+}

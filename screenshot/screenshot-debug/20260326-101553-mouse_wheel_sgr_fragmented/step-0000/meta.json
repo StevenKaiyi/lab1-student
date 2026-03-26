@@ -1,0 +1,18 @@
+{
+  "index": 0,
+  "kind": "initial",
+  "label": "initial settle",
+  "input_bytes_hex": "",
+  "delta_bytes": 2029,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774491355.187387,
+  "scenario": "mouse_wheel_sgr_fragmented.json",
+  "instance": "screenshot-debug-8707"
+}

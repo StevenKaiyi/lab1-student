@@ -1,0 +1,48 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 180,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "create pane 1",
+      "keys": "<C-b>:new<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "layout settle",
+      "ms": 400
+    },
+    {
+      "type": "keys",
+      "label": "focus pane 0",
+      "keys": "<C-b>:focus 0<Enter>"
+    },
+    {
+      "type": "keys",
+      "label": "run command in pane 0",
+      "keys": "echo PANE_ZERO_DEBUG<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane 0 settle",
+      "ms": 400
+    },
+    {
+      "type": "keys",
+      "label": "focus pane 1",
+      "keys": "<C-b>:focus 1<Enter>"
+    },
+    {
+      "type": "keys",
+      "label": "run command in pane 1",
+      "keys": "echo PANE_ONE_DEBUG<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane 1 settle",
+      "ms": 500
+    }
+  ]
+}

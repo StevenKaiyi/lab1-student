@@ -291,6 +291,8 @@ bool recv_message(int fd, Message &message) {
 struct ClientConnection {
     int fd = -1;
     bool read_only = false;
+    winsize size{};
+    bool has_size = false;
 };
 
 struct OutputChunk {
@@ -366,9 +368,10 @@ struct TextScreenBuffer {
     };
 
     std::vector<std::string> lines;
-    std::string current_line;
+    size_t cursor_row = 0;
     size_t cursor_col = 0;
     EscapeState escape_state = EscapeState::kText;
+    std::string csi_buffer;
 };
 
 struct PipeoutState {
@@ -486,20 +489,120 @@ ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
 }
 
 void trim_text_buffer_lines(TextScreenBuffer &buffer, size_t max_lines) {
+    if (max_lines == 0) {
+        buffer.lines.assign(1, std::string{});
+        buffer.cursor_row = 0;
+        buffer.cursor_col = 0;
+        return;
+    }
+    if (buffer.lines.empty()) {
+        buffer.lines.emplace_back();
+    }
     if (buffer.lines.size() > max_lines) {
+        const size_t removed = buffer.lines.size() - max_lines;
         buffer.lines.erase(buffer.lines.begin(),
-                           buffer.lines.begin() + static_cast<std::ptrdiff_t>(buffer.lines.size() - max_lines));
+                           buffer.lines.begin() + static_cast<std::ptrdiff_t>(removed));
+        buffer.cursor_row = buffer.cursor_row >= removed ? buffer.cursor_row - removed : 0;
+    }
+    if (buffer.lines.empty()) {
+        buffer.lines.emplace_back();
+        buffer.cursor_row = 0;
+    }
+    if (buffer.cursor_row >= buffer.lines.size()) {
+        buffer.cursor_row = buffer.lines.size() - 1;
+    }
+}
+
+void ensure_text_buffer_row(TextScreenBuffer &buffer, size_t row) {
+    while (buffer.lines.size() <= row) {
+        buffer.lines.emplace_back();
+    }
+}
+
+std::string &active_text_buffer_line(TextScreenBuffer &buffer) {
+    ensure_text_buffer_row(buffer, buffer.cursor_row);
+    return buffer.lines[buffer.cursor_row];
+}
+
+std::vector<int> parse_csi_params(const std::string &raw) {
+    std::vector<int> values;
+    std::string params = raw;
+    if (!params.empty() && params[0] == '?') {
+        params.erase(params.begin());
+    }
+    if (params.empty()) {
+        return values;
+    }
+    size_t start = 0;
+    while (start <= params.size()) {
+        const size_t end = params.find(';', start);
+        const std::string field = params.substr(start, end == std::string::npos ? std::string::npos : end - start);
+        if (field.empty()) {
+            values.push_back(0);
+        } else {
+            char *parse_end = nullptr;
+            errno = 0;
+            const long value = std::strtol(field.c_str(), &parse_end, 10);
+            values.push_back(errno == 0 && parse_end != nullptr && *parse_end == '\0' ? static_cast<int>(value) : 0);
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+    return values;
+}
+
+void clear_line(TextScreenBuffer &buffer, int mode) {
+    std::string &line = active_text_buffer_line(buffer);
+    if (mode == 2) {
+        line.clear();
+        return;
+    }
+    if (mode == 1) {
+        if (line.size() < buffer.cursor_col + 1) {
+            line.resize(buffer.cursor_col + 1, ' ');
+        }
+        for (size_t i = 0; i <= buffer.cursor_col && i < line.size(); ++i) {
+            line[i] = ' ';
+        }
+        return;
+    }
+    if (buffer.cursor_col < line.size()) {
+        line.erase(static_cast<std::string::size_type>(buffer.cursor_col));
+    }
+}
+
+void clear_screen(TextScreenBuffer &buffer, int mode) {
+    ensure_text_buffer_row(buffer, buffer.cursor_row);
+    if (mode == 2 || mode == 3) {
+        for (std::string &line : buffer.lines) {
+            line.clear();
+        }
+        return;
+    }
+    if (mode == 1) {
+        for (size_t row = 0; row < buffer.cursor_row && row < buffer.lines.size(); ++row) {
+            buffer.lines[row].clear();
+        }
+        clear_line(buffer, 1);
+        return;
+    }
+    clear_line(buffer, 0);
+    for (size_t row = buffer.cursor_row + 1; row < buffer.lines.size(); ++row) {
+        buffer.lines[row].clear();
     }
 }
 
 void append_printable_char(TextScreenBuffer &buffer, char ch) {
-    if (buffer.cursor_col < buffer.current_line.size()) {
-        buffer.current_line[buffer.cursor_col] = ch;
+    std::string &line = active_text_buffer_line(buffer);
+    if (buffer.cursor_col < line.size()) {
+        line[buffer.cursor_col] = ch;
     } else {
-        while (buffer.current_line.size() < buffer.cursor_col) {
-            buffer.current_line.push_back(' ');
+        while (line.size() < buffer.cursor_col) {
+            line.push_back(' ');
         }
-        buffer.current_line.push_back(ch);
+        line.push_back(ch);
     }
     ++buffer.cursor_col;
 }
@@ -511,38 +614,69 @@ void append_spaces(TextScreenBuffer &buffer, size_t count) {
 }
 
 void handle_backspace(TextScreenBuffer &buffer) {
-    if (buffer.cursor_col == 0 || buffer.current_line.empty()) {
+    std::string &line = active_text_buffer_line(buffer);
+    if (buffer.cursor_col == 0 || line.empty()) {
         return;
     }
     const size_t erase_at = buffer.cursor_col - 1;
-    if (erase_at < buffer.current_line.size()) {
-        buffer.current_line.erase(buffer.current_line.begin() + static_cast<std::ptrdiff_t>(erase_at));
+    if (erase_at < line.size()) {
+        line.erase(line.begin() + static_cast<std::ptrdiff_t>(erase_at));
     }
     --buffer.cursor_col;
 }
 
 void handle_newline(TextScreenBuffer &buffer, size_t max_lines) {
-    buffer.lines.push_back(buffer.current_line);
-    buffer.current_line.clear();
+    ++buffer.cursor_row;
     buffer.cursor_col = 0;
+    ensure_text_buffer_row(buffer, buffer.cursor_row);
     trim_text_buffer_lines(buffer, max_lines);
 }
 
-void handle_csi_final(TextScreenBuffer &buffer, char final_byte) {
+void handle_csi_final(TextScreenBuffer &buffer, const std::string &raw, char final_byte) {
+    const std::vector<int> values = parse_csi_params(raw);
+    auto first_value = [&](int fallback) {
+        return !values.empty() && values[0] > 0 ? values[0] : fallback;
+    };
+
+    if (final_byte == 'A') {
+        const size_t amount = static_cast<size_t>(first_value(1));
+        buffer.cursor_row = buffer.cursor_row > amount ? buffer.cursor_row - amount : 0;
+        return;
+    }
+    if (final_byte == 'B') {
+        buffer.cursor_row += static_cast<size_t>(first_value(1));
+        ensure_text_buffer_row(buffer, buffer.cursor_row);
+        return;
+    }
+    if (final_byte == 'C') {
+        buffer.cursor_col += static_cast<size_t>(first_value(1));
+        return;
+    }
+    if (final_byte == 'D') {
+        const size_t amount = static_cast<size_t>(first_value(1));
+        buffer.cursor_col = buffer.cursor_col > amount ? buffer.cursor_col - amount : 0;
+        return;
+    }
+    if (final_byte == 'H' || final_byte == 'f') {
+        const size_t row = static_cast<size_t>(first_value(1));
+        const size_t col = static_cast<size_t>(values.size() >= 2 && values[1] > 0 ? values[1] : 1);
+        buffer.cursor_row = row > 0 ? row - 1 : 0;
+        buffer.cursor_col = col > 0 ? col - 1 : 0;
+        ensure_text_buffer_row(buffer, buffer.cursor_row);
+        return;
+    }
+    if (final_byte == 'J') {
+        clear_screen(buffer, values.empty() ? 0 : values[0]);
+        return;
+    }
     if (final_byte == 'K') {
-        if (buffer.cursor_col < buffer.current_line.size()) {
-            buffer.current_line.erase(static_cast<std::string::size_type>(buffer.cursor_col));
-        }
-    } else if (final_byte == 'D') {
-        if (buffer.cursor_col > 0) {
-            --buffer.cursor_col;
-        }
-    } else if (final_byte == 'C') {
-        ++buffer.cursor_col;
+        clear_line(buffer, values.empty() ? 0 : values[0]);
+        return;
     }
 }
 
 void append_text_output(TextScreenBuffer &buffer, const std::string &chunk, size_t max_lines) {
+    ensure_text_buffer_row(buffer, buffer.cursor_row);
     for (unsigned char uch : chunk) {
         const char ch = static_cast<char>(uch);
         switch (buffer.escape_state) {
@@ -575,6 +709,7 @@ void append_text_output(TextScreenBuffer &buffer, const std::string &chunk, size
             case TextScreenBuffer::EscapeState::kEscape:
                 if (ch == '[') {
                     buffer.escape_state = TextScreenBuffer::EscapeState::kCsi;
+                    buffer.csi_buffer.clear();
                 } else if (ch == ']') {
                     buffer.escape_state = TextScreenBuffer::EscapeState::kOsc;
                 } else {
@@ -583,8 +718,11 @@ void append_text_output(TextScreenBuffer &buffer, const std::string &chunk, size
                 continue;
             case TextScreenBuffer::EscapeState::kCsi:
                 if (ch >= 0x40 && ch <= 0x7e) {
-                    handle_csi_final(buffer, ch);
+                    handle_csi_final(buffer, buffer.csi_buffer, ch);
+                    buffer.csi_buffer.clear();
                     buffer.escape_state = TextScreenBuffer::EscapeState::kText;
+                } else {
+                    buffer.csi_buffer.push_back(ch);
                 }
                 continue;
             case TextScreenBuffer::EscapeState::kOsc:
@@ -604,27 +742,61 @@ void append_text_output(TextScreenBuffer &buffer, const std::string &chunk, size
 }
 
 std::string render_text_snapshot(const TextScreenBuffer &buffer) {
-    std::string snapshot;
-    for (const std::string &line : buffer.lines) {
-        snapshot += line;
-        snapshot.push_back('\n');
+    if (buffer.lines.empty()) {
+        return "";
     }
-    snapshot += buffer.current_line;
+    std::string snapshot = buffer.lines[0];
+    for (size_t i = 1; i < buffer.lines.size(); ++i) {
+        snapshot.push_back('\n');
+        snapshot += buffer.lines[i];
+    }
     return snapshot;
 }
 
+TextScreenBuffer parse_text_snapshot(const std::string &snapshot, size_t cursor_row, size_t cursor_col) {
+    TextScreenBuffer buffer{};
+    size_t start = 0;
+    while (start <= snapshot.size()) {
+        const size_t newline = snapshot.find('\n', start);
+        if (newline == std::string::npos) {
+            buffer.lines.push_back(snapshot.substr(start));
+            break;
+        }
+        buffer.lines.push_back(snapshot.substr(start, newline - start));
+        start = newline + 1;
+        if (start == snapshot.size()) {
+            buffer.lines.emplace_back();
+            break;
+        }
+    }
+    if (buffer.lines.empty()) {
+        buffer.lines.emplace_back();
+    }
+    buffer.cursor_row = std::min(cursor_row, buffer.lines.size() - 1);
+    buffer.cursor_col = cursor_col;
+    return buffer;
+}
 void append_client_output(ClientViewState &view, int pane_id, const std::string &chunk) {
     ClientPaneBuffer *buffer = find_client_buffer(view, pane_id);
     append_text_output(buffer->text, chunk, kClientBufferedLines);
 }
 
+std::string redraw_summary_line(const std::string &payload) {
+    const size_t newline = payload.find('\n');
+    if (newline == std::string::npos) {
+        return payload;
+    }
+    return payload.substr(0, newline);
+}
+
 std::vector<PaneLayout> parse_redraw_layout(const std::string &payload, int focused_pane_id) {
     std::vector<PaneLayout> layout;
-    const size_t marker = payload.find(" layout=");
+    const std::string summary = redraw_summary_line(payload);
+    const size_t marker = summary.find(" layout=");
     if (marker == std::string::npos) {
         return layout;
     }
-    const std::string body = payload.substr(marker + 8);
+    const std::string body = summary.substr(marker + 8);
     size_t pos = 0;
     while (pos < body.size()) {
         const size_t comma = body.find(',', pos);
@@ -666,16 +838,109 @@ std::string fit_to_width(const std::string &input, unsigned short width) {
 }
 
 bool use_structured_client_render(const ClientViewState &view) {
-    return view.layout.size() > 1;
+    return !view.layout.empty();
 }
 
+std::vector<ClientPaneBuffer> parse_redraw_buffers(const std::string &payload) {
+    std::vector<ClientPaneBuffer> buffers;
+    size_t pos = payload.find('\n');
+    if (pos == std::string::npos) {
+        return buffers;
+    }
+    ++pos;
+
+    while (pos < payload.size()) {
+        if (payload.compare(pos, 6, "@pane ") != 0) {
+            break;
+        }
+        const size_t header_end = payload.find('\n', pos);
+        if (header_end == std::string::npos) {
+            break;
+        }
+
+        const std::string header = payload.substr(pos + 6, header_end - (pos + 6));
+        size_t field_pos = 0;
+        auto next_field = [&](std::string &field) -> bool {
+            while (field_pos < header.size() && header[field_pos] == ' ') {
+                ++field_pos;
+            }
+            if (field_pos >= header.size()) {
+                return false;
+            }
+            const size_t end = header.find(' ', field_pos);
+            field = header.substr(field_pos, end == std::string::npos ? std::string::npos : end - field_pos);
+            field_pos = end == std::string::npos ? header.size() : end + 1;
+            return true;
+        };
+        auto parse_non_negative_field = [](const std::string &value, int &parsed) -> bool {
+            if (value.empty()) {
+                return false;
+            }
+            char *end = nullptr;
+            errno = 0;
+            const long raw = std::strtol(value.c_str(), &end, 10);
+            if (errno != 0 || end == nullptr || *end != '\0' || raw < 0 || raw > INT32_MAX) {
+                return false;
+            }
+            parsed = static_cast<int>(raw);
+            return true;
+        };
+
+        std::string pane_id_text;
+        std::string cursor_row_text;
+        std::string cursor_col_text;
+        std::string size_text;
+        if (!next_field(pane_id_text) || !next_field(cursor_row_text) ||
+            !next_field(cursor_col_text) || !next_field(size_text)) {
+            break;
+        }
+
+        int pane_id = -1;
+        int parsed_cursor_row = -1;
+        int parsed_cursor_col = -1;
+        int snapshot_size = -1;
+        if (!parse_non_negative_field(pane_id_text, pane_id) ||
+            !parse_non_negative_field(cursor_row_text, parsed_cursor_row) ||
+            !parse_non_negative_field(cursor_col_text, parsed_cursor_col) ||
+            !parse_non_negative_field(size_text, snapshot_size)) {
+            break;
+        }
+
+        pos = header_end + 1;
+        const size_t snapshot_bytes = static_cast<size_t>(snapshot_size);
+        if (pos + snapshot_bytes > payload.size()) {
+            break;
+        }
+
+        ClientPaneBuffer pane_buffer{};
+        pane_buffer.pane_id = pane_id;
+        pane_buffer.text = parse_text_snapshot(payload.substr(pos, snapshot_bytes),
+                                               static_cast<size_t>(parsed_cursor_row),
+                                               static_cast<size_t>(parsed_cursor_col));
+        buffers.push_back(std::move(pane_buffer));
+        pos += snapshot_bytes;
+        if (pos < payload.size() && payload[pos] == '\n') {
+            ++pos;
+        }
+    }
+    return buffers;
+}
 bool render_client_view(const ClientViewState &view, const std::string &command_buffer,
                         ClientInputMode input_mode) {
-    std::string frame = "\x1b[?25l\x1b[H\x1b[2J";
+    std::string frame = "\x1b[?25l\x1b[?7l\x1b[H\x1b[2J";
     int screen_row = 1;
     int cursor_row = 1;
     int cursor_col = 1;
     bool cursor_positioned = false;
+    bool command_prompt_positioned = false;
+    int command_prompt_row = 1;
+    int command_prompt_col = 1;
+
+    auto append_row = [&](int row, const std::string &text, unsigned short width) {
+        frame += "\x1b[" + std::to_string(row) + ";1H";
+        frame += fit_to_width(text, width);
+        frame += "\x1b[K";
+    };
 
     for (size_t i = 0; i < view.layout.size(); ++i) {
         const PaneLayout &pane = view.layout[i];
@@ -694,14 +959,16 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
                 header += " | " + view.local_status;
             }
         }
-        frame += fit_to_width(header, pane.cols) + "\r\n";
         const int header_row = screen_row;
+        append_row(screen_row, header, pane.cols);
         ++screen_row;
 
         std::vector<std::string> visible_lines;
         if (buffer != nullptr) {
             visible_lines = buffer->text.lines;
-            visible_lines.push_back(buffer->text.current_line);
+        }
+        if (visible_lines.empty()) {
+            visible_lines.emplace_back();
         }
         const int reserved_rows = 1 + (i + 1 != view.layout.size() ? 1 : 0);
         const int body_rows = std::max<int>(0, static_cast<int>(pane.rows) - reserved_rows);
@@ -713,8 +980,8 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
         if (pane.focused) {
             cursor_positioned = true;
             if (body_rows > 0) {
-                const int current_line_index = std::max<int>(0, static_cast<int>(visible_lines.size()) - 1);
-                int cursor_offset = current_line_index - start;
+                const int raw_row = buffer != nullptr ? static_cast<int>(buffer->text.cursor_row) : 0;
+                int cursor_offset = raw_row - start;
                 if (cursor_offset < 0) {
                     cursor_offset = 0;
                 }
@@ -729,6 +996,11 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
                 cursor_row = header_row;
                 cursor_col = 1;
             }
+            if (input_mode == ClientInputMode::kCommand) {
+                command_prompt_positioned = true;
+                command_prompt_row = cursor_row;
+                command_prompt_col = cursor_col;
+            }
         }
 
         for (int row = 0; row < body_rows; ++row) {
@@ -737,26 +1009,33 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
             if (source >= 0 && source < static_cast<int>(visible_lines.size())) {
                 line = visible_lines[source];
             }
-            frame += fit_to_width(line, pane.cols) + "\r\n";
+            append_row(screen_row, line, pane.cols);
             ++screen_row;
         }
         if (i + 1 != view.layout.size()) {
-            frame += fit_to_width(std::string(pane.cols, '-'), pane.cols) + "\r\n";
+            append_row(screen_row, std::string(pane.cols, '-'), pane.cols);
             ++screen_row;
         }
     }
 
-    if (input_mode == ClientInputMode::kCommand) {
-        frame += "\x1b[999;1H:" + command_buffer;
-    } else if (cursor_positioned) {
+    if (input_mode == ClientInputMode::kCommand && command_prompt_positioned) {
+        frame += "\x1b[" + std::to_string(command_prompt_row) + ";" + std::to_string(command_prompt_col) + "H:";
+        frame += command_buffer;
+        frame += "\x1b[K";
+        const int visible_cols = std::max<int>(1, view.layout.empty() ? 1 : view.layout.front().cols);
+        const int desired_col = command_prompt_col + 1 + static_cast<int>(command_buffer.size());
+        cursor_row = command_prompt_row;
+        cursor_col = std::min(desired_col, visible_cols);
+    }
+
+    if (cursor_positioned) {
         frame += "\x1b[" + std::to_string(cursor_row) + ";" + std::to_string(cursor_col) + "H";
     } else {
         frame += "\x1b[H";
     }
-    frame += "\x1b[?25h";
-    return write_stdout(frame);
+    frame += "\x1b[?7h\x1b[?25h";
+    return write_all(STDOUT_FILENO, frame.data(), frame.size());
 }
-
 std::string trim_ascii_whitespace(const std::string &input) {
     size_t start = 0;
     while (start < input.size() && std::isspace(static_cast<unsigned char>(input[start])) != 0) {
@@ -804,7 +1083,6 @@ bool parse_non_negative_int(const std::string &text, int &value) {
     value = static_cast<int>(parsed);
     return true;
 }
-
 std::string format_usage(const std::string &usage) {
     return "usage: " + usage;
 }
@@ -994,6 +1272,7 @@ PaneSlot *find_pipeout_slot_by_pid(SessionState &session, pid_t pid) {
 
 void redirect_stdio_to_devnull();
 bool apply_winsize(int master_fd, const winsize &ws);
+void signal_foreground_process_group(int master_fd, int sig);
 
 std::vector<size_t> collect_live_pane_indices(const SessionState &session) {
     std::vector<size_t> indices;
@@ -1048,10 +1327,15 @@ void apply_session_layout(SessionState &session) {
             if (slot.pane_id != entry.pane_id || slot.state == PaneState::kDestroyed) {
                 continue;
             }
+            const bool size_changed = slot.pane.size.ws_row != entry.rows ||
+                                      slot.pane.size.ws_col != entry.cols;
             slot.pane.size.ws_row = entry.rows;
             slot.pane.size.ws_col = entry.cols;
             if (slot.pane.master_fd >= 0) {
                 apply_winsize(slot.pane.master_fd, slot.pane.size);
+                if (size_changed) {
+                    signal_foreground_process_group(slot.pane.master_fd, SIGWINCH);
+                }
             }
             break;
         }
@@ -1087,6 +1371,69 @@ std::string build_redraw_summary(const SessionState &session) {
     return summary;
 }
 
+std::string build_redraw_payload(const SessionState &session) {
+    std::string payload = build_redraw_summary(session);
+    payload.push_back('\n');
+
+    const std::vector<PaneLayout> layout = compute_vertical_layout(session);
+    for (size_t i = 0; i < layout.size(); ++i) {
+        const PaneLayout &entry = layout[i];
+        for (const PaneSlot &slot : session.panes) {
+            if (slot.pane_id != entry.pane_id || slot.state == PaneState::kDestroyed) {
+                continue;
+            }
+
+            std::vector<std::string> visible_lines = slot.output.capture.lines;
+            if (visible_lines.empty()) {
+                visible_lines.emplace_back();
+            }
+            const int reserved_rows = 1 + (i + 1 != layout.size() ? 1 : 0);
+            const int body_rows = std::max<int>(0, static_cast<int>(entry.rows) - reserved_rows);
+            int start = static_cast<int>(visible_lines.size()) - body_rows;
+            if (start < 0) {
+                start = 0;
+            }
+
+            TextScreenBuffer visible_buffer{};
+            if (body_rows > 0) {
+                visible_buffer.lines.reserve(static_cast<size_t>(body_rows));
+                for (int row = 0; row < body_rows; ++row) {
+                    std::string line;
+                    const int source = start + row;
+                    if (source >= 0 && source < static_cast<int>(visible_lines.size())) {
+                        line = visible_lines[source];
+                    }
+                    if (entry.cols > 0 && line.size() > entry.cols) {
+                        line.resize(entry.cols);
+                    }
+                    visible_buffer.lines.push_back(std::move(line));
+                }
+                const int raw_row = static_cast<int>(slot.output.capture.cursor_row);
+                int relative_row = raw_row - start;
+                if (relative_row < 0) {
+                    relative_row = 0;
+                }
+                if (relative_row >= body_rows) {
+                    relative_row = body_rows - 1;
+                }
+                visible_buffer.cursor_row = static_cast<size_t>(relative_row);
+            } else {
+                visible_buffer.lines.emplace_back();
+                visible_buffer.cursor_row = 0;
+            }
+            visible_buffer.cursor_col = slot.output.capture.cursor_col;
+            const std::string snapshot = render_text_snapshot(visible_buffer);
+            payload += "@pane " + std::to_string(slot.pane_id) + " " +
+                       std::to_string(visible_buffer.cursor_row) + " " +
+                       std::to_string(visible_buffer.cursor_col) + " " +
+                       std::to_string(snapshot.size()) + "\n";
+            payload += snapshot;
+            payload.push_back('\n');
+            break;
+        }
+    }
+    return payload;
+}
 PaneSlot *find_pane_slot(SessionState &session, int pane_id) {
     for (PaneSlot &slot : session.panes) {
         if (slot.pane_id == pane_id && slot.state != PaneState::kDestroyed) {
@@ -1192,6 +1539,47 @@ bool apply_winsize(int master_fd, const winsize &ws) {
     return ioctl(master_fd, TIOCSWINSZ, &ws) == 0;
 }
 
+pid_t foreground_process_group(int master_fd) {
+    const pid_t pgid = tcgetpgrp(master_fd);
+    if (pgid < 0) {
+        return -1;
+    }
+    return pgid;
+}
+
+void signal_foreground_process_group(int master_fd, int sig) {
+    const pid_t pgid = foreground_process_group(master_fd);
+    if (pgid <= 0) {
+        return;
+    }
+    if (kill(-pgid, sig) != 0 && errno != ESRCH) {
+        // Best-effort notification; process groups may disappear during layout or detach races.
+    }
+}
+
+winsize session_size_from_clients(const std::vector<ClientConnection> &clients, winsize fallback) {
+    fallback = normalize_winsize(fallback);
+    bool have_size = false;
+    winsize size{};
+    for (const ClientConnection &client : clients) {
+        if (!client.has_size) {
+            continue;
+        }
+        if (!have_size) {
+            size = normalize_winsize(client.size);
+            have_size = true;
+            continue;
+        }
+        size.ws_row = std::min(size.ws_row, client.size.ws_row);
+        size.ws_col = std::min(size.ws_col, client.size.ws_col);
+    }
+    return have_size ? normalize_winsize(size) : fallback;
+}
+
+void refresh_session_size_from_clients(ServerState &server) {
+    server.session.size = session_size_from_clients(server.clients, server.session.size);
+}
+
 std::string choose_shell() {
     const char *shell = std::getenv("SHELL");
     if (shell != nullptr && *shell != '\0') {
@@ -1229,6 +1617,9 @@ bool spawn_shell_pane(Pane &pane, const winsize &initial_size) {
         if (dup2(slave_fd, STDIN_FILENO) < 0 ||
             dup2(slave_fd, STDOUT_FILENO) < 0 ||
             dup2(slave_fd, STDERR_FILENO) < 0) {
+            _exit(1);
+        }
+        if (tcsetpgrp(STDIN_FILENO, getpgrp()) < 0) {
             _exit(1);
         }
         if (slave_fd > STDERR_FILENO) {
@@ -1515,9 +1906,10 @@ int create_listen_socket(const std::string &socket_path) {
     return fd;
 }
 
-void remove_client(std::vector<ClientConnection> &clients, size_t index) {
-    close_fd_if_valid(clients[index].fd);
-    clients.erase(clients.begin() + static_cast<std::ptrdiff_t>(index));
+void remove_client(ServerState &server, size_t index) {
+    close_fd_if_valid(server.clients[index].fd);
+    server.clients.erase(server.clients.begin() + static_cast<std::ptrdiff_t>(index));
+    refresh_session_size_from_clients(server);
 }
 
 void broadcast_output(ServerState &server, int pane_id, const char *data, size_t size) {
@@ -1527,7 +1919,7 @@ void broadcast_output(ServerState &server, int pane_id, const char *data, size_t
     server.session.backlog.append(pane_id, data, size);
     for (size_t i = 0; i < server.clients.size();) {
         if (!send_message(server.clients[i].fd, MessageType::kServerOutput, pane_id, 0, data, size)) {
-            remove_client(server.clients, i);
+            remove_client(server, i);
             continue;
         }
         ++i;
@@ -1535,13 +1927,13 @@ void broadcast_output(ServerState &server, int pane_id, const char *data, size_t
 }
 
 void broadcast_redraw(ServerState &server) {
-    const std::string summary = build_redraw_summary(server.session);
+    const std::string payload = build_redraw_payload(server.session);
     for (size_t i = 0; i < server.clients.size();) {
         if (!send_message(server.clients[i].fd, MessageType::kServerRedraw,
                           server.session.focused_pane_id,
                           static_cast<int32_t>(server.session.panes.size()),
-                          summary.data(), summary.size())) {
-            remove_client(server.clients, i);
+                          payload.data(), payload.size())) {
+            remove_client(server, i);
             continue;
         }
         ++i;
@@ -1552,7 +1944,7 @@ void notify_server_exit(ServerState &server) {
     for (size_t i = 0; i < server.clients.size();) {
         if (!send_message(server.clients[i].fd, MessageType::kServerExit,
                           server.final_exit_code, server.final_exit_signal, nullptr, 0)) {
-            remove_client(server.clients, i);
+            remove_client(server, i);
             continue;
         }
         ++i;
@@ -1657,11 +2049,9 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 bool read_only = false;
                 if (!recv_client_hello(client_fd, read_only)) {
                     close(client_fd);
-                } else if (server.session.backlog.send_to_client(client_fd)) {
-                    server.clients.push_back({client_fd, read_only});
-                    broadcast_redraw(server);
                 } else {
-                    close(client_fd);
+                    server.clients.push_back({client_fd, read_only, {}, false});
+                    broadcast_redraw(server);
                 }
             }
         }
@@ -1745,7 +2135,9 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                     ws.ws_row = static_cast<unsigned short>(message.arg0);
                     ws.ws_col = static_cast<unsigned short>(message.arg1);
                     ws = normalize_winsize(ws);
-                    server.session.size = ws;
+                    server.clients[client_index].size = ws;
+                    server.clients[client_index].has_size = true;
+                    refresh_session_size_from_clients(server);
                     apply_session_layout(server.session);
                 } else if (message.type == MessageType::kClientCommand) {
                     const std::string raw_command(message.payload.begin(), message.payload.end());
@@ -1763,7 +2155,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             }
 
             if (!keep_client) {
-                remove_client(server.clients, client_index);
+                remove_client(server, client_index);
                 continue;
             }
             ++client_index;
@@ -1859,6 +2251,7 @@ int client_process(int socket_fd, bool read_only) {
     constexpr char kBackspaceKey = 0x7f;
     ClientInputMode input_mode = ClientInputMode::kNormal;
     std::string command_buffer;
+    std::string prefix_sequence;
     ClientViewState view_state{};
     bool alternate_screen_active = false;
 
@@ -1878,6 +2271,27 @@ int client_process(int socket_fd, bool read_only) {
             }
             alternate_screen_active = true;
         }
+        return true;
+    };
+    const std::string arrow_prefix = std::string(1, kEscapeKey) + "[";
+    const std::string arrow_up = arrow_prefix + "A";
+    const std::string arrow_down = arrow_prefix + "B";
+    const std::string arrow_right = arrow_prefix + "C";
+    const std::string arrow_left = arrow_prefix + "D";
+    auto reset_prefix_mode = [&]() {
+        input_mode = ClientInputMode::kNormal;
+        prefix_sequence.clear();
+    };
+    auto run_prefix_focus_command = [&](const std::string &command) -> bool {
+        if (!read_only) {
+            if (!send_message(socket_fd, MessageType::kClientCommand, 0, 0,
+                              command.data(), command.size())) {
+                return false;
+            }
+        } else if (!show_local_status("read-only clients cannot switch focus")) {
+            return false;
+        }
+        reset_prefix_mode();
         return true;
     };
 
@@ -1969,8 +2383,40 @@ int client_process(int socket_fd, bool read_only) {
                     }
 
                     if (input_mode == ClientInputMode::kPrefix) {
+                        if (!prefix_sequence.empty() || ch == kEscapeKey) {
+                            prefix_sequence.push_back(ch);
+                            if (prefix_sequence == std::string(1, kEscapeKey) ||
+                                prefix_sequence == arrow_prefix) {
+                                continue;
+                            }
+
+                            std::string command;
+                            if (prefix_sequence == arrow_up || prefix_sequence == arrow_left) {
+                                command = "prev";
+                            } else if (prefix_sequence == arrow_down || prefix_sequence == arrow_right) {
+                                command = "next";
+                            }
+
+                            if (!command.empty()) {
+                                if (!run_prefix_focus_command(command)) {
+                                    done = true;
+                                    break;
+                                }
+                            } else {
+                                reset_prefix_mode();
+                                if (!show_local_status(read_only ?
+                                                       "read-only: unsupported prefix command" :
+                                                       "unsupported prefix command")) {
+                                    done = true;
+                                    break;
+                                }
+                            }
+                            continue;
+                        }
+
                         if (ch == ':') {
                             input_mode = ClientInputMode::kCommand;
+                            prefix_sequence.clear();
                             command_buffer.clear();
                             if (use_structured_client_render(view_state)) {
                                 if (!render_client_view(view_state, command_buffer, input_mode)) {
@@ -1982,29 +2428,21 @@ int client_process(int socket_fd, bool read_only) {
                                 break;
                             }
                         } else if (ch == 'd') {
-                            input_mode = ClientInputMode::kNormal;
+                            reset_prefix_mode();
                             done = true;
                         } else if (ch == 'n' || ch == 'p') {
-                            const std::string command = ch == 'n' ? "next" : "prev";
-                            if (!read_only) {
-                                if (!send_message(socket_fd, MessageType::kClientCommand, 0, 0,
-                                                  command.data(), command.size())) {
-                                    done = true;
-                                    break;
-                                }
-                            } else if (!show_local_status("read-only clients cannot switch focus")) {
+                            if (!run_prefix_focus_command(ch == 'n' ? "next" : "prev")) {
                                 done = true;
                                 break;
                             }
-                            input_mode = ClientInputMode::kNormal;
                         } else if (!read_only && ch == kPrefixKey) {
                             if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
                                 done = true;
                                 break;
                             }
-                            input_mode = ClientInputMode::kNormal;
+                            reset_prefix_mode();
                         } else {
-                            input_mode = ClientInputMode::kNormal;
+                            reset_prefix_mode();
                             if (!show_local_status(read_only ?
                                                    "read-only: unsupported prefix command" :
                                                    "unsupported prefix command")) {
@@ -2017,6 +2455,7 @@ int client_process(int socket_fd, bool read_only) {
 
                     if (ch == kPrefixKey) {
                         input_mode = ClientInputMode::kPrefix;
+                        prefix_sequence.clear();
                         continue;
                     }
 
@@ -2069,12 +2508,9 @@ int client_process(int socket_fd, bool read_only) {
                 const std::string redraw(message.payload.begin(), message.payload.end());
                 view_state.focused_pane_id = message.arg0;
                 view_state.layout = parse_redraw_layout(redraw, message.arg0);
-                if (use_structured_client_render(view_state)) {
-                    if (!ensure_render_surface() ||
-                        !render_client_view(view_state, command_buffer, input_mode)) {
-                        done = true;
-                    }
-                } else if (!ensure_render_surface()) {
+                view_state.buffers = parse_redraw_buffers(redraw);
+                if (!ensure_render_surface() ||
+                    !render_client_view(view_state, command_buffer, input_mode)) {
                     done = true;
                 }
             } else if (message.type == MessageType::kServerExit) {

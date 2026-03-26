@@ -1,0 +1,16 @@
+{
+  "index": 71,
+  "kind": "final",
+  "label": "final settle",
+  "input_bytes_hex": "",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 16,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774494363.878892
+}

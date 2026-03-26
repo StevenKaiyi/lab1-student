@@ -1,0 +1,17 @@
+{
+  "index": 34,
+  "kind": "wait",
+  "label": "after fragmented down",
+  "input_bytes_hex": "",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 27,
+    "visible": true
+  },
+  "timestamp": 1774491358.4666152,
+  "duration_ms": 150
+}

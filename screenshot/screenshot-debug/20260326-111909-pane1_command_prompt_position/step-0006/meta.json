@@ -1,0 +1,17 @@
+{
+  "index": 6,
+  "kind": "key",
+  "label": "create pane1: <C-b>",
+  "input_bytes_hex": "02",
+  "delta_bytes": 0,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 4,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774495152.2093897,
+  "key_label": "<C-b>"
+}

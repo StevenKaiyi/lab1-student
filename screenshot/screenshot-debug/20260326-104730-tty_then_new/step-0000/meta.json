@@ -1,0 +1,18 @@
+{
+  "index": 0,
+  "kind": "initial",
+  "label": "initial settle",
+  "input_bytes_hex": "",
+  "delta_bytes": 2028,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 2,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774493251.580902,
+  "scenario": "tty_then_new.json",
+  "instance": "screenshot-debug-15935"
+}

@@ -1,0 +1,17 @@
+{
+  "index": 46,
+  "kind": "key",
+  "label": "focus pane 1: s",
+  "input_bytes_hex": "73",
+  "delta_bytes": 2187,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 1,
+    "col": 25,
+    "visible": true
+  },
+  "timestamp": 1774494637.7541988,
+  "key_label": "s"
+}

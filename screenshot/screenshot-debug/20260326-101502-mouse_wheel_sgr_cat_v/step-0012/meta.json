@@ -1,0 +1,17 @@
+{
+  "index": 12,
+  "kind": "keys",
+  "label": "wheel down sgr",
+  "input_bytes_hex": "1b5b3c36353b34303b31324d",
+  "delta_bytes": 3990,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 27,
+    "visible": true
+  },
+  "timestamp": 1774491305.618543,
+  "token_count": 12
+}

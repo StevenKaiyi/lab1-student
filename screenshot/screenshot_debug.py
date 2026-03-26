@@ -34,6 +34,8 @@ NAMED_KEYS = {
     'BACKSPACE': b'\x7f',
     'BS': b'\x7f',
     'SPACE': b' ',
+    'LT': b'<',
+    'GT': b'>',
 }
 
 

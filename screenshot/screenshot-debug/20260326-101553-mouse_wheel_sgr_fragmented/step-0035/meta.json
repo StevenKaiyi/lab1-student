@@ -1,0 +1,17 @@
+{
+  "index": 35,
+  "kind": "key",
+  "label": "stop cat: <C-c>",
+  "input_bytes_hex": "03",
+  "delta_bytes": 3990,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 34,
+    "visible": true
+  },
+  "timestamp": 1774491358.5538507,
+  "key_label": "<C-c>"
+}

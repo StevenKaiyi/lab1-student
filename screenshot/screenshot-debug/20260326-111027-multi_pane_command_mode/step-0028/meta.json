@@ -1,0 +1,17 @@
+{
+  "index": 28,
+  "kind": "key",
+  "label": "run command in pane 0: Z",
+  "input_bytes_hex": "5a",
+  "delta_bytes": 2187,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 2,
+    "col": 45,
+    "visible": true
+  },
+  "timestamp": 1774494634.1203103,
+  "key_label": "Z"
+}

@@ -1,0 +1,54 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 80,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "start cat -v",
+      "keys": "cat -v<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "cat ready",
+      "ms": 300
+    },
+    {
+      "type": "keys",
+      "label": "fragmented shift wheel up",
+      "keys": "<Esc>[<LT>68;40;12M",
+      "per_key": true,
+      "settle_ms": 80,
+      "max_wait_ms": 400
+    },
+    {
+      "type": "wait",
+      "label": "after fragmented up",
+      "ms": 150
+    },
+    {
+      "type": "keys",
+      "label": "fragmented ctrl wheel down",
+      "keys": "<Esc>[<LT>81;40;12M",
+      "per_key": true,
+      "settle_ms": 80,
+      "max_wait_ms": 400
+    },
+    {
+      "type": "wait",
+      "label": "after fragmented down",
+      "ms": 150
+    },
+    {
+      "type": "keys",
+      "label": "stop cat",
+      "keys": "<C-c>"
+    },
+    {
+      "type": "wait",
+      "label": "prompt restore",
+      "ms": 200
+    }
+  ]
+}

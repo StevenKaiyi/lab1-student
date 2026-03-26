@@ -1,0 +1,58 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 180,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "pane0 tty before split",
+      "keys": "tty<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane0 tty settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "create pane 1",
+      "keys": "<C-b>:new<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "post new settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "pane1 tty",
+      "keys": "tty<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane1 tty settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "focus pane 0",
+      "keys": "<C-b>:focus 0<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "focus 0 settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "pane0 tty again",
+      "keys": "tty<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "final settle",
+      "ms": 500
+    }
+  ]
+}

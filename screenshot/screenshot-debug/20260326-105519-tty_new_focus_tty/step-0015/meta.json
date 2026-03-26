@@ -1,0 +1,17 @@
+{
+  "index": 15,
+  "kind": "key",
+  "label": "pane1 tty: y",
+  "input_bytes_hex": "79",
+  "delta_bytes": 1995,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 14,
+    "col": 37,
+    "visible": true
+  },
+  "timestamp": 1774493723.98256,
+  "key_label": "y"
+}

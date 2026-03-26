@@ -1,0 +1,49 @@
+{
+  "rows": 24,
+  "cols": 80,
+  "initial_settle_ms": 1500,
+  "settle_ms": 180,
+  "steps": [
+    {
+      "type": "keys",
+      "label": "pane0 tty",
+      "keys": "tty<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane0 tty settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "create pane1",
+      "keys": "<C-b>:new<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "post new settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "pane1 tty",
+      "keys": "tty<Enter>"
+    },
+    {
+      "type": "wait",
+      "label": "pane1 tty settle",
+      "ms": 500
+    },
+    {
+      "type": "keys",
+      "label": "enter command mode in pane1",
+      "keys": "<C-b>:new",
+      "per_key": true
+    },
+    {
+      "type": "wait",
+      "label": "command mode settle",
+      "ms": 300
+    }
+  ]
+}

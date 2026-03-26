@@ -1,0 +1,17 @@
+{
+  "index": 7,
+  "kind": "key",
+  "label": "create pane after tty: :",
+  "input_bytes_hex": "3a",
+  "delta_bytes": 1996,
+  "rows": 24,
+  "cols": 80,
+  "alternate_screen": true,
+  "cursor": {
+    "row": 24,
+    "col": 2,
+    "visible": true
+  },
+  "timestamp": 1774491775.118315,
+  "key_label": ":"
+}

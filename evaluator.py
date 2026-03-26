@@ -35,11 +35,12 @@ def pack(t, a0=0, a1=0, payload=b''):
 
 
 def parse_layout(payload, focused):
-    marker = payload.find(' layout=')
+    summary = payload.split('\n', 1)[0]
+    marker = summary.find(' layout=')
     if marker < 0:
         return {}
-    raw = payload[marker + 8:].strip()
-    if raw == '<none>':
+    raw = summary[marker + 8:].strip()
+    if raw in ('<none>', 'none'):
         return {}
     out = {}
     for item in raw.split(','):

@@ -290,54 +290,10 @@ bool recv_message(int fd, Message &message) {
 
 struct ClientConnection {
     int fd = -1;
+    bool hello_received = false;
     bool read_only = false;
     winsize size{};
     bool has_size = false;
-};
-
-struct OutputChunk {
-    int pane_id = -1;
-    std::vector<char> data;
-};
-
-struct OutputBacklog {
-    std::vector<OutputChunk> chunks;
-    size_t total_bytes = 0;
-
-    void trim() {
-        constexpr size_t kMaxBacklogBytes = 1 << 20;
-        while (total_bytes > kMaxBacklogBytes && !chunks.empty()) {
-            total_bytes -= chunks.front().data.size();
-            chunks.erase(chunks.begin());
-        }
-    }
-
-    void append(int pane_id, const char *chunk, size_t size) {
-        if (size == 0) {
-            return;
-        }
-        OutputChunk entry{};
-        entry.pane_id = pane_id;
-        entry.data.assign(chunk, chunk + size);
-        total_bytes += size;
-        chunks.push_back(std::move(entry));
-        trim();
-    }
-
-    bool send_to_client(int fd) const {
-        for (const OutputChunk &chunk : chunks) {
-            size_t offset = 0;
-            while (offset < chunk.data.size()) {
-                const size_t part = std::min(kMaxPayload, chunk.data.size() - offset);
-                if (!send_message(fd, MessageType::kServerOutput, chunk.pane_id, 0,
-                                  chunk.data.data() + offset, part)) {
-                    return false;
-                }
-                offset += part;
-            }
-        }
-        return true;
-    }
 };
 
 struct Pane {
@@ -405,7 +361,6 @@ struct SessionState {
     int focused_pane_id = -1;
     int next_pane_id = 1;
     winsize size{};
-    OutputBacklog backlog;
 };
 
 struct ServerState {
@@ -1151,39 +1106,20 @@ void stop_pane_log(PaneSlot &slot) {
     close_fd_if_valid(slot.output.log_fd);
 }
 
-bool wait_for_child_exit(pid_t pid) {
-    if (pid <= 0) {
-        return true;
-    }
-    while (true) {
-        const pid_t rc = waitpid(pid, nullptr, 0);
-        if (rc == pid) {
-            return true;
-        }
-        if (rc < 0 && errno == EINTR) {
-            continue;
-        }
-        return rc < 0 && errno == ECHILD;
-    }
-}
-
-void stop_pane_pipeout(PaneSlot &slot, bool terminate_process, bool wait_for_child) {
+void stop_pane_pipeout(PaneSlot &slot, bool terminate_process) {
     close_fd_if_valid(slot.output.pipeout.write_fd);
     const pid_t pid = slot.output.pipeout.child_pid;
     if (pid > 0 && terminate_process) {
         if (kill(pid, SIGHUP) != 0 && errno != ESRCH) {
-            // Best-effort cleanup; if signaling fails for another reason the next wait/reap path still clears it.
+            // Best-effort cleanup; the SIGCHLD path still reaps the child when it exits.
         }
-    }
-    if (pid > 0 && wait_for_child) {
-        wait_for_child_exit(pid);
     }
     slot.output.pipeout.child_pid = -1;
 }
 
-void cleanup_pane_outputs(PaneSlot &slot, bool wait_for_pipeout_child) {
+void cleanup_pane_outputs(PaneSlot &slot) {
     stop_pane_log(slot);
-    stop_pane_pipeout(slot, true, wait_for_pipeout_child);
+    stop_pane_pipeout(slot, true);
 }
 
 bool start_pane_log(PaneSlot &slot, const std::string &path) {
@@ -1199,7 +1135,7 @@ bool start_pane_log(PaneSlot &slot, const std::string &path) {
 void redirect_stdio_to_devnull();
 
 bool start_pane_pipeout(PaneSlot &slot, const std::string &command) {
-    stop_pane_pipeout(slot, false, true);
+    stop_pane_pipeout(slot, true);
 
     int pipe_fds[2] = {-1, -1};
     if (pipe(pipe_fds) != 0) {
@@ -1255,6 +1191,7 @@ void record_pane_output(PaneSlot &slot, const char *data, size_t size) {
     }
     if (slot.output.pipeout.write_fd >= 0 && !write_all(slot.output.pipeout.write_fd, data, size)) {
         close_fd_if_valid(slot.output.pipeout.write_fd);
+        slot.output.pipeout.child_pid = -1;
     }
 }
 
@@ -1443,6 +1380,13 @@ PaneSlot *find_pane_slot(SessionState &session, int pane_id) {
     return nullptr;
 }
 
+void destroy_pane_slot(PaneSlot &slot) {
+    cleanup_pane_outputs(slot);
+    close_fd_if_valid(slot.pane.master_fd);
+    slot.pane.master_closed = true;
+    slot.state = PaneState::kDestroyed;
+}
+
 int choose_focus_pane_id(const SessionState &session, int skip_pane_id) {
     for (const PaneSlot &slot : session.panes) {
         if (slot.state != PaneState::kDestroyed && slot.pane_id != skip_pane_id) {
@@ -1520,19 +1464,6 @@ bool session_has_live_panes(const SessionState &session) {
 
 bool send_client_hello(int socket_fd, bool read_only) {
     return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, 0, nullptr, 0);
-}
-
-bool recv_client_hello(int socket_fd, bool &read_only) {
-    Message message;
-    if (!recv_message(socket_fd, message)) {
-        return false;
-    }
-    if (message.type != MessageType::kClientHello) {
-        errno = EPROTO;
-        return false;
-    }
-    read_only = message.arg0 != 0;
-    return true;
 }
 
 bool apply_winsize(int master_fd, const winsize &ws) {
@@ -1705,14 +1636,15 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
-        if (slot->pane.child_reaped) {
+        if (slot->pane.child_reaped || slot->state == PaneState::kDestroyed) {
             return format_ok("pane " + std::to_string(pane_id) + " is already exiting");
         }
 
-        cleanup_pane_outputs(*slot, true);
+        signal_foreground_process_group(slot->pane.master_fd, SIGHUP);
         if (slot->pane.child_pid > 0 && kill(slot->pane.child_pid, SIGHUP) != 0 && errno != ESRCH) {
             return format_error("failed to signal pane " + std::to_string(pane_id));
         }
+        destroy_pane_slot(*slot);
         if (server.session.focused_pane_id == pane_id) {
             server.session.focused_pane_id = choose_focus_pane_id(server.session, pane_id);
         }
@@ -1821,7 +1753,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
-        stop_pane_pipeout(*slot, false, true);
+        stop_pane_pipeout(*slot, true);
         return format_ok("stopped pipeout for pane " + std::to_string(pane_id));
     }
 
@@ -1916,8 +1848,11 @@ void broadcast_output(ServerState &server, int pane_id, const char *data, size_t
     if (PaneSlot *slot = find_pane_slot(server.session, pane_id); slot != nullptr) {
         record_pane_output(*slot, data, size);
     }
-    server.session.backlog.append(pane_id, data, size);
     for (size_t i = 0; i < server.clients.size();) {
+        if (!server.clients[i].hello_received) {
+            ++i;
+            continue;
+        }
         if (!send_message(server.clients[i].fd, MessageType::kServerOutput, pane_id, 0, data, size)) {
             remove_client(server, i);
             continue;
@@ -1929,6 +1864,10 @@ void broadcast_output(ServerState &server, int pane_id, const char *data, size_t
 void broadcast_redraw(ServerState &server) {
     const std::string payload = build_redraw_payload(server.session);
     for (size_t i = 0; i < server.clients.size();) {
+        if (!server.clients[i].hello_received) {
+            ++i;
+            continue;
+        }
         if (!send_message(server.clients[i].fd, MessageType::kServerRedraw,
                           server.session.focused_pane_id,
                           static_cast<int32_t>(server.session.panes.size()),
@@ -1942,6 +1881,10 @@ void broadcast_redraw(ServerState &server) {
 
 void notify_server_exit(ServerState &server) {
     for (size_t i = 0; i < server.clients.size();) {
+        if (!server.clients[i].hello_received) {
+            ++i;
+            continue;
+        }
         if (!send_message(server.clients[i].fd, MessageType::kServerExit,
                           server.final_exit_code, server.final_exit_signal, nullptr, 0)) {
             remove_client(server, i);
@@ -2004,7 +1947,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
     if (server.listen_fd < 0) {
         perr("listen socket");
         for (PaneSlot &slot : server.session.panes) {
-            cleanup_pane_outputs(slot, true);
+            cleanup_pane_outputs(slot);
             if (slot.pane.child_pid > 0) {
                 kill(slot.pane.child_pid, SIGHUP);
                 waitpid(slot.pane.child_pid, nullptr, 0);
@@ -2019,6 +1962,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         const std::string redraw_before_poll = build_redraw_summary(server.session);
         std::vector<pollfd> pfds;
         std::vector<size_t> pane_poll_indices;
+        const size_t polled_client_count = server.clients.size();
         pfds.push_back({server.listen_fd, POLLIN, 0});
         pfds.push_back({server.sigchld_read_fd, POLLIN, 0});
         for (size_t pane_index = 0; pane_index < server.session.panes.size(); ++pane_index) {
@@ -2046,13 +1990,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             const int client_fd = accept(server.listen_fd, nullptr, nullptr);
             if (client_fd >= 0) {
                 set_cloexec(client_fd);
-                bool read_only = false;
-                if (!recv_client_hello(client_fd, read_only)) {
-                    close(client_fd);
-                } else {
-                    server.clients.push_back({client_fd, read_only, {}, false});
-                    broadcast_redraw(server);
-                }
+                server.clients.push_back({client_fd, false, false, {}, false});
             }
         }
         ++idx;
@@ -2075,8 +2013,10 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                         continue;
                     }
                     slot.pane.child_reaped = true;
-                    slot.state = PaneState::kReaped;
-                    cleanup_pane_outputs(slot, true);
+                    if (slot.state != PaneState::kDestroyed) {
+                        slot.state = PaneState::kReaped;
+                    }
+                    cleanup_pane_outputs(slot);
                     if (WIFEXITED(status)) {
                         slot.pane.exit_code = WEXITSTATUS(status);
                         slot.pane.exit_signal = 0;
@@ -2109,8 +2049,8 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             }
         }
 
-        for (size_t client_index = 0; client_index < server.clients.size(); ++idx) {
-            const short revents = pfds[idx].revents;
+        for (size_t client_index = 0; client_index < polled_client_count; ++idx) {
+            const short revents = idx < pfds.size() ? pfds[idx].revents : 0;
             bool keep_client = true;
             if (revents & (POLLHUP | POLLERR)) {
                 keep_client = false;
@@ -2118,6 +2058,14 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 Message message;
                 if (!recv_message(server.clients[client_index].fd, message)) {
                     keep_client = false;
+                } else if (!server.clients[client_index].hello_received) {
+                    if (message.type != MessageType::kClientHello) {
+                        keep_client = false;
+                    } else {
+                        server.clients[client_index].hello_received = true;
+                        server.clients[client_index].read_only = message.arg0 != 0;
+                        broadcast_redraw(server);
+                    }
                 } else if (message.type == MessageType::kClientInput) {
                     PaneSlot *target = find_pane_slot(server.session, server.session.focused_pane_id);
                     if (!server.clients[client_index].read_only && target != nullptr &&
@@ -2186,7 +2134,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         close_fd_if_valid(client.fd);
     }
     for (PaneSlot &slot : server.session.panes) {
-        cleanup_pane_outputs(slot, true);
+        cleanup_pane_outputs(slot);
         if (slot.pane.child_pid > 0 && !slot.pane.child_reaped) {
             kill(slot.pane.child_pid, SIGHUP);
             waitpid(slot.pane.child_pid, nullptr, 0);
@@ -2234,6 +2182,7 @@ int client_process(int socket_fd, bool read_only) {
         perr("tcsetattr(raw)");
         return 1;
     }
+    const bool stdin_is_tty = isatty(STDIN_FILENO);
 
     if (!show_local_status(read_only ?
                            "mini-tmux: attached in read-only mode" :
@@ -2435,12 +2384,11 @@ int client_process(int socket_fd, bool read_only) {
                                 done = true;
                                 break;
                             }
-                        } else if (!read_only && ch == kPrefixKey) {
-                            if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
-                                done = true;
-                                break;
-                            }
-                            reset_prefix_mode();
+                        } else if (ch == kPrefixKey) {
+                            // Treat a repeated prefix as restarting the prefix sequence instead of
+                            // forwarding Ctrl+B into the pane. This avoids leaking raw arrow-key
+                            // escape sequences when the client is still in prefix mode.
+                            prefix_sequence.clear();
                         } else {
                             reset_prefix_mode();
                             if (!show_local_status(read_only ?
@@ -2467,8 +2415,13 @@ int client_process(int socket_fd, bool read_only) {
                     }
                 }
             } else if (read_rc == 0) {
-                done = true;
+                if (!stdin_is_tty) {
+                    done = true;
+                }
             } else if (errno != EINTR && errno != EAGAIN) {
+                if (errno == EIO && stdin_is_tty) {
+                    continue;
+                }
                 done = true;
             }
         }

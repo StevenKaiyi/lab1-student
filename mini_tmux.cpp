@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
+#include <chrono>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
@@ -339,6 +340,7 @@ struct PaneOutputState {
     int log_fd = -1;
     PipeoutState pipeout{};
     TextScreenBuffer capture{};
+    std::string replay_output;
 };
 
 struct PaneSlot {
@@ -370,6 +372,8 @@ struct ServerState {
     int sigchld_write_fd = -1;
     bool should_exit = false;
     bool exit_notified = false;
+    bool shutdown_pending = false;
+    std::chrono::steady_clock::time_point shutdown_deadline{};
     int final_exit_code = 0;
     int final_exit_signal = 0;
     SessionState session{};
@@ -431,6 +435,7 @@ bool show_local_status(const std::string &text) {
 
 constexpr size_t kClientBufferedLines = 200;
 constexpr size_t kCaptureBufferedLines = 1000;
+constexpr size_t kReplayBufferedBytes = 64 * 1024;
 
 ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
     for (ClientPaneBuffer &buffer : view.buffers) {
@@ -1186,6 +1191,10 @@ void record_pane_output(PaneSlot &slot, const char *data, size_t size) {
     }
 
     append_text_output(slot.output.capture, std::string(data, size), kCaptureBufferedLines);
+    slot.output.replay_output.append(data, size);
+    if (slot.output.replay_output.size() > kReplayBufferedBytes) {
+        slot.output.replay_output.erase(0, slot.output.replay_output.size() - kReplayBufferedBytes);
+    }
     if (slot.output.log_fd >= 0 && !write_all(slot.output.log_fd, data, size)) {
         close_fd_if_valid(slot.output.log_fd);
     }
@@ -1861,17 +1870,44 @@ void broadcast_output(ServerState &server, int pane_id, const char *data, size_t
     }
 }
 
+bool send_redraw_to_client(int fd, const SessionState &session) {
+    const std::string payload = build_redraw_payload(session);
+    return send_message(fd, MessageType::kServerRedraw, session.focused_pane_id,
+                        static_cast<int32_t>(session.panes.size()), payload.data(), payload.size());
+}
+
+bool send_replay_output_to_client(int fd, int pane_id, const std::string &output) {
+    size_t offset = 0;
+    while (offset < output.size()) {
+        const size_t chunk_size = std::min(kMaxPayload, output.size() - offset);
+        if (!send_message(fd, MessageType::kServerOutput, pane_id, 0,
+                          output.data() + static_cast<std::ptrdiff_t>(offset), chunk_size)) {
+            return false;
+        }
+        offset += chunk_size;
+    }
+    return true;
+}
+
+bool send_initial_client_state(int fd, const SessionState &session) {
+    for (const PaneSlot &slot : session.panes) {
+        if (slot.state == PaneState::kDestroyed) {
+            continue;
+        }
+        if (!send_replay_output_to_client(fd, slot.pane_id, slot.output.replay_output)) {
+            return false;
+        }
+    }
+    return send_redraw_to_client(fd, session);
+}
+
 void broadcast_redraw(ServerState &server) {
-    const std::string payload = build_redraw_payload(server.session);
     for (size_t i = 0; i < server.clients.size();) {
         if (!server.clients[i].hello_received) {
             ++i;
             continue;
         }
-        if (!send_message(server.clients[i].fd, MessageType::kServerRedraw,
-                          server.session.focused_pane_id,
-                          static_cast<int32_t>(server.session.panes.size()),
-                          payload.data(), payload.size())) {
+        if (!send_redraw_to_client(server.clients[i].fd, server.session)) {
             remove_client(server, i);
             continue;
         }
@@ -1959,6 +1995,16 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
     }
 
     while (!server.should_exit) {
+        int poll_timeout_ms = -1;
+        if (server.shutdown_pending && !server.exit_notified) {
+            const auto now = std::chrono::steady_clock::now();
+            if (now >= server.shutdown_deadline) {
+                poll_timeout_ms = 0;
+            } else {
+                poll_timeout_ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(
+                    server.shutdown_deadline - now).count());
+            }
+        }
         const std::string redraw_before_poll = build_redraw_summary(server.session);
         std::vector<pollfd> pfds;
         std::vector<size_t> pane_poll_indices;
@@ -1976,7 +2022,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             pfds.push_back({client.fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
         }
 
-        const int rc = poll(pfds.data(), pfds.size(), -1);
+        const int rc = poll(pfds.data(), pfds.size(), poll_timeout_ms);
         if (rc < 0) {
             if (errno == EINTR) {
                 continue;
@@ -2064,7 +2110,9 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                     } else {
                         server.clients[client_index].hello_received = true;
                         server.clients[client_index].read_only = message.arg0 != 0;
-                        broadcast_redraw(server);
+                        if (!send_initial_client_state(server.clients[client_index].fd, server.session)) {
+                            keep_client = false;
+                        }
                     }
                 } else if (message.type == MessageType::kClientInput) {
                     PaneSlot *target = find_pane_slot(server.session, server.session.focused_pane_id);
@@ -2087,6 +2135,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                     server.clients[client_index].has_size = true;
                     refresh_session_size_from_clients(server);
                     apply_session_layout(server.session);
+                    broadcast_redraw(server);
                 } else if (message.type == MessageType::kClientCommand) {
                     const std::string raw_command(message.payload.begin(), message.payload.end());
                     const std::string status = handle_client_command(server, server.clients[client_index], raw_command);
@@ -2122,11 +2171,16 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         }
 
         if (!session_has_live_panes(server.session)) {
-            if (!server.exit_notified) {
+            if (!server.shutdown_pending) {
+                server.shutdown_pending = true;
+                server.shutdown_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
+            } else if (!server.exit_notified && std::chrono::steady_clock::now() >= server.shutdown_deadline) {
                 notify_server_exit(server);
                 server.exit_notified = true;
+                server.should_exit = true;
             }
-            server.should_exit = true;
+        } else {
+            server.shutdown_pending = false;
         }
     }
 
@@ -2453,8 +2507,6 @@ int client_process(int socket_fd, bool read_only) {
                             !render_client_view(view_state, command_buffer, input_mode)) {
                             done = true;
                         }
-                    } else if (!write_stdout(chunk)) {
-                        done = true;
                     }
                 }
             } else if (message.type == MessageType::kServerRedraw) {

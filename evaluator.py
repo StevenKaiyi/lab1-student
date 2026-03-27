@@ -155,6 +155,77 @@ class Client:
         raise EvalError(f'timeout waiting for output token {token!r} on pane {pane}')
 
 
+class SessionClient:
+    def __init__(self, instance, rows, cols):
+        self.instance = instance
+        self.rows = rows
+        self.cols = cols
+        self.proc = None
+        self.client = None
+
+    def start(self):
+        env = os.environ.copy()
+        env['TERM'] = env.get('TERM', 'xterm-256color')
+        env['MINI_TMUX_SERVER'] = self.instance
+        self.proc = subprocess.Popen([str(BINARY)], cwd=str(ROOT), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env, start_new_session=True)
+        wait_socket(self.instance, 8.0)
+        self.client = Client(self.instance)
+        self.client.connect()
+        self.client.send_resize(self.rows, self.cols)
+        self.client.wait_redraw()
+
+    def send_raw(self, data):
+        if self.client is None:
+            raise EvalError('session client is not running')
+        payload = data.decode('latin1') if isinstance(data, bytes) else data
+        self.client.send_input(payload)
+
+    def send_line(self, text):
+        payload = text.decode('latin1') if isinstance(text, bytes) else text
+        self.send_raw(payload + '\n')
+
+    def drain(self, dur=0.05):
+        if self.client is None:
+            return
+        self.client.drain(dur)
+
+    def close(self):
+        if self.client is not None:
+            try:
+                self.client.send_input('\x04exit\n')
+                end = time.time() + 2.0
+                while time.time() < end:
+                    try:
+                        self.client.drain(0.05)
+                    except Exception:
+                        break
+                    if not os.path.exists(sock_path(self.instance)):
+                        break
+            except Exception:
+                pass
+            self.client.close()
+            self.client = None
+        if self.proc is not None and self.proc.poll() is None:
+            try:
+                self.proc.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(self.proc.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    self.proc.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    try:
+                        os.killpg(self.proc.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    self.proc.wait(timeout=2.0)
+
+    def alive(self):
+        return self.client is not None and os.path.exists(sock_path(self.instance))
+
+
 class Sideband:
     def __init__(self):
         self.path = tempfile.mktemp(prefix='mini-tmux-sideband-', dir='/tmp')
@@ -217,13 +288,16 @@ class Context:
         self.server = None
         self.main = None
         self.extras = []
+        self.session_clients = {}
         self.sideband = Sideband()
         self.tmp = Path(tempfile.mkdtemp(prefix=f"mini-tmux-eval-{workload['id']}-"))
-        self.panes = {0: {'session': 'pane_0', 'events': [], 'probe': False, 'env': None, 'signals': [], 'outs': [], 'ins': []}}
+        self.panes = {0: {'session': 'pane_0', 'kind': 'pane', 'events': [], 'probe': False, 'env': None, 'signals': [], 'outs': [], 'ins': []}}
 
     def close(self):
         for c in self.extras:
             c.close()
+        for client in self.session_clients.values():
+            client.close()
         if self.main is not None:
             self.main.close()
         cleanup_client = None
@@ -231,6 +305,8 @@ class Context:
             cleanup_client = Client(self.instance)
             cleanup_client.connect(timeout=0.5)
             for pane_id in sorted(self.panes.keys(), reverse=True):
+                if self.panes[pane_id].get('kind') != 'pane':
+                    continue
                 cleanup_client.send_command(f':kill {pane_id}')
                 try:
                     cleanup_client.wait_status(timeout=0.5)
@@ -273,6 +349,8 @@ class Context:
                 self.main.drain(0.01)
             for c in self.extras:
                 c.drain(0.01)
+            for client in self.session_clients.values():
+                client.drain(0.01)
 
     def wait_event(self, pane_id, pred, timeout=8.0, what='event'):
         end = time.time() + timeout
@@ -379,8 +457,19 @@ def create_pane(ctx):
     if not status.startswith('ok: created pane '):
         raise EvalError(status)
     pane_id = int(status.rsplit(' ', 1)[1])
-    ctx.panes[pane_id] = {'session': f'pane_{pane_id}', 'events': [], 'probe': False, 'env': None, 'signals': [], 'outs': [], 'ins': []}
+    ctx.panes[pane_id] = {'session': f'pane_{pane_id}', 'kind': 'pane', 'events': [], 'probe': False, 'env': None, 'signals': [], 'outs': [], 'ins': []}
     wait_layout(ctx, panes=before + 1, focus=pane_id)
+    return pane_id
+
+
+def create_session_client(ctx, session_name=None):
+    pane_id = max(ctx.panes.keys(), default=-1) + 1
+    session_name = str(session_name or f'session_{pane_id}')
+    instance = f"{ctx.instance}-s{pane_id}"
+    client = SessionClient(instance, ctx.rows, ctx.cols)
+    client.start()
+    ctx.session_clients[pane_id] = client
+    ctx.panes[pane_id] = {'session': session_name, 'kind': 'session', 'events': [], 'probe': False, 'env': None, 'signals': [], 'outs': [], 'ins': []}
     return pane_id
 
 
@@ -418,10 +507,14 @@ def run_cmd(ctx, pane_id, cmd, delay_ms=0):
 
 
 def send_keys(ctx, pane_id, keys, delay_ms=0):
-    if ctx.main.focus != pane_id:
-        focus(ctx, pane_id)
     mapping = {'C-c': '\x03', 'C-z': '\x1a', 'Enter': '\r', 'Escape': '\x1b'}
-    ctx.main.send_input(mapping.get(keys, keys))
+    payload = mapping.get(keys, keys)
+    if pane_id in ctx.session_clients:
+        ctx.session_clients[pane_id].send_raw(payload.encode() if isinstance(payload, str) else payload)
+    else:
+        if ctx.main.focus != pane_id:
+            focus(ctx, pane_id)
+        ctx.main.send_input(payload)
     if delay_ms:
         time.sleep(delay_ms / 1000.0)
     ctx.poll(0.2)
@@ -462,6 +555,17 @@ class Runner:
         self.ctx.panes[pane_id]['session'] = str(step.get('session', self.ctx.panes[pane_id]['session']))
         start_probe(self.ctx, pane_id)
 
+    def do_create_session_with_probe(self, step):
+        pane_id = create_session_client(self.ctx, step.get('session'))
+        self.ctx.session_clients[pane_id].send_line(f'{PROBE} {self.ctx.sideband.path} {self.ctx.panes[pane_id]["session"]}')
+        self.ctx.wait_event(pane_id, lambda e: e.get('type') == 'ready', 8.0, 'probe ready')
+        self.ctx.wait_event(pane_id, lambda e: e.get('type') == 'env_check', 8.0, 'env_check')
+        self.ctx.wait_event(pane_id, lambda e: e.get('type') == 'output_token', 8.0, 'output_token')
+        self.ctx.panes[pane_id]['probe'] = True
+
+    def do_create_session(self, step):
+        create_session_client(self.ctx, step.get('session'))
+
     def do_wait_probe_ready(self, step):
         self.ctx.wait_event(int(step['pane']), lambda e: e.get('type') == 'ready', 8.0, 'ready')
 
@@ -478,14 +582,19 @@ class Runner:
         pane_id = int(step['pane']); pane = self.ctx.panes[pane_id]
         if not pane['outs']:
             self.ctx.wait_event(pane_id, lambda e: e.get('type') == 'output_token', 8.0, 'output_token')
+        if pane_id in self.ctx.session_clients:
+            return
         self.ctx.main.wait_output(pane_id, pane['outs'][-1], 8.0)
 
     def do_verify_input_token(self, step):
         pane_id = int(step['pane']); pane = self.ctx.panes[pane_id]
         token = pane['outs'][-1]
-        if self.ctx.main.focus != pane_id:
-            focus(self.ctx, pane_id)
-        self.ctx.main.send_input(token + '\n')
+        if pane_id in self.ctx.session_clients:
+            self.ctx.session_clients[pane_id].send_line(token)
+        else:
+            if self.ctx.main.focus != pane_id:
+                focus(self.ctx, pane_id)
+            self.ctx.main.send_input(token + '\n')
         self.ctx.wait_event(pane_id, lambda e: e.get('type') == 'input_token' and e.get('received') == token, 8.0, 'input_token')
 
     def do_verify_pgrp_isolation(self, step):
@@ -529,6 +638,15 @@ class Runner:
         if not status.startswith('ok:'):
             raise EvalError(status)
         time.sleep(0.5); self.ctx.poll(0.2)
+
+    def do_kill_session(self, step):
+        pane_id = int(step['pane'])
+        client = self.ctx.session_clients.pop(pane_id, None)
+        if client is None:
+            raise EvalError(f'session {pane_id} does not exist')
+        client.close()
+        self.ctx.panes[pane_id]['probe'] = False
+        time.sleep(0.3); self.ctx.poll(0.2)
 
     def do_verify_zombie_count(self, step):
         proc = subprocess.run(['ps', '-eo', 'ppid=,stat='], capture_output=True, text=True, check=True)

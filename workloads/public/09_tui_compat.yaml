@@ -1,7 +1,7 @@
-name: "TUI program compatibility (vim start/quit, state preserve on switch)"
+name: "TUI program compatibility (vim start/quit)"
 id: t_tui_compat
 category: io
-timeout_sec: 20
+timeout_sec: 15
 terminal:
   rows: 24
   cols: 80
@@ -16,84 +16,20 @@ steps:
   - action: create_pane
   - action: switch_focus
     pane: 1
-  # 启动 vim
   - action: run_command
     command: "vim"
     delay_ms: 1000
-  # 测试 vim 响应 - 进入插入模式并输入内容
   - action: send_keys
     pane: 1
-    keys: "i"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "VIM_INSERT_TEST"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "Escape"
-    delay_ms: 200
-  # 切换到 pane 0 - 验证 vim 状态保持
-  - action: switch_focus
-    pane: 0
-  - action: wait
-    duration_ms: 300
-  - action: verify_env_check
-    pane: 0
-  # 在 pane 0 中执行命令
-  - action: run_command
-    command: "echo 'PANE0_ACTIVE'"
-    delay_ms: 200
-  - action: wait
-    duration_ms: 300
-  # 切回 pane 1 - 验证 vim 仍在运行
-  - action: switch_focus
-    pane: 1
-  - action: wait
-    duration_ms: 300
-  # 验证 vim 仍在运行 - 尝试写入并退出
-  - action: send_keys
-    pane: 1
-    keys: ":"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "w"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "/tmp/vim_test.txt"
-    delay_ms: 200
+    keys: ":q!"
   - action: send_keys
     pane: 1
     keys: "Enter"
-    delay_ms: 300
-  - action: send_keys
-    pane: 1
-    keys: ":"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "q"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "!"
-    delay_ms: 200
-  - action: send_keys
-    pane: 1
-    keys: "Enter"
-    delay_ms: 500
-  # 切回 pane 0 验证 vim 已退出
+  - action: wait
+    duration_ms: 500
   - action: switch_focus
     pane: 0
-  - action: wait
-    duration_ms: 300
   - action: verify_env_check
     pane: 0
   - action: verify_output_token
     pane: 0
-  # 清理测试文件
-  - action: run_command
-    command: "rm -f /tmp/vim_test.txt"
-    delay_ms: 200

@@ -365,6 +365,14 @@ struct SessionState {
     winsize size{};
 };
 
+bool pane_is_present(const PaneSlot &slot) {
+    return slot.state != PaneState::kDestroyed;
+}
+
+bool pane_is_active(const PaneSlot &slot) {
+    return slot.state == PaneState::kCreated || slot.state == PaneState::kRunning;
+}
+
 struct ServerState {
     std::string socket_path;
     int listen_fd = -1;
@@ -373,6 +381,7 @@ struct ServerState {
     bool should_exit = false;
     bool exit_notified = false;
     bool shutdown_pending = false;
+    std::chrono::steady_clock::time_point shutdown_notice_deadline{};
     std::chrono::steady_clock::time_point shutdown_deadline{};
     int final_exit_code = 0;
     int final_exit_signal = 0;
@@ -1223,7 +1232,7 @@ void signal_foreground_process_group(int master_fd, int sig);
 std::vector<size_t> collect_live_pane_indices(const SessionState &session) {
     std::vector<size_t> indices;
     for (size_t i = 0; i < session.panes.size(); ++i) {
-        if (session.panes[i].state != PaneState::kDestroyed) {
+        if (pane_is_active(session.panes[i])) {
             indices.push_back(i);
         }
     }
@@ -1270,7 +1279,7 @@ void apply_session_layout(SessionState &session) {
     const std::vector<PaneLayout> layout = compute_vertical_layout(session);
     for (const PaneLayout &entry : layout) {
         for (PaneSlot &slot : session.panes) {
-            if (slot.pane_id != entry.pane_id || slot.state == PaneState::kDestroyed) {
+            if (slot.pane_id != entry.pane_id || !pane_is_active(slot)) {
                 continue;
             }
             const bool size_changed = slot.pane.size.ws_row != entry.rows ||
@@ -1382,7 +1391,7 @@ std::string build_redraw_payload(const SessionState &session) {
 }
 PaneSlot *find_pane_slot(SessionState &session, int pane_id) {
     for (PaneSlot &slot : session.panes) {
-        if (slot.pane_id == pane_id && slot.state != PaneState::kDestroyed) {
+        if (slot.pane_id == pane_id && pane_is_present(slot)) {
             return &slot;
         }
     }
@@ -1393,12 +1402,12 @@ void destroy_pane_slot(PaneSlot &slot) {
     cleanup_pane_outputs(slot);
     close_fd_if_valid(slot.pane.master_fd);
     slot.pane.master_closed = true;
-    slot.state = PaneState::kDestroyed;
+    slot.state = slot.pane.child_reaped ? PaneState::kDestroyed : PaneState::kExited;
 }
 
 int choose_focus_pane_id(const SessionState &session, int skip_pane_id) {
     for (const PaneSlot &slot : session.panes) {
-        if (slot.state != PaneState::kDestroyed && slot.pane_id != skip_pane_id) {
+        if (pane_is_active(slot) && slot.pane_id != skip_pane_id) {
             return slot.pane_id;
         }
     }
@@ -1408,7 +1417,7 @@ int choose_focus_pane_id(const SessionState &session, int skip_pane_id) {
 std::vector<int> collect_live_pane_ids(const SessionState &session) {
     std::vector<int> pane_ids;
     for (const PaneSlot &slot : session.panes) {
-        if (slot.state != PaneState::kDestroyed) {
+        if (pane_is_active(slot)) {
             pane_ids.push_back(slot.pane_id);
         }
     }
@@ -1456,20 +1465,24 @@ std::string focus_pane(SessionState &session, int pane_id) {
 }
 
 void maybe_repair_focus(SessionState &session) {
-    if (session.focused_pane_id >= 0 && find_pane_slot(session, session.focused_pane_id) != nullptr) {
-        return;
+    if (session.focused_pane_id >= 0) {
+        if (PaneSlot *slot = find_pane_slot(session, session.focused_pane_id);
+            slot != nullptr && pane_is_active(*slot)) {
+            return;
+        }
     }
     session.focused_pane_id = choose_focus_pane_id(session, -1);
 }
 
 bool session_has_live_panes(const SessionState &session) {
     for (const PaneSlot &slot : session.panes) {
-        if (slot.state != PaneState::kDestroyed) {
+        if (pane_is_active(slot)) {
             return true;
         }
     }
     return false;
 }
+
 
 bool send_client_hello(int socket_fd, bool read_only) {
     return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, 0, nullptr, 0);
@@ -1996,7 +2009,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
 
     while (!server.should_exit) {
         int poll_timeout_ms = -1;
-        if (server.shutdown_pending && !server.exit_notified) {
+        if (server.shutdown_pending) {
             const auto now = std::chrono::steady_clock::now();
             if (now >= server.shutdown_deadline) {
                 poll_timeout_ms = 0;
@@ -2171,12 +2184,19 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         }
 
         if (!session_has_live_panes(server.session)) {
+            const auto now = std::chrono::steady_clock::now();
             if (!server.shutdown_pending) {
                 server.shutdown_pending = true;
-                server.shutdown_deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(3000);
-            } else if (!server.exit_notified && std::chrono::steady_clock::now() >= server.shutdown_deadline) {
+                server.shutdown_notice_deadline = now + std::chrono::milliseconds(300);
+                server.shutdown_deadline = now + std::chrono::milliseconds(2500);
+            }
+            if (!server.exit_notified && now >= server.shutdown_notice_deadline) {
                 notify_server_exit(server);
                 server.exit_notified = true;
+            }
+            if (now >= server.shutdown_deadline) {
+                notify_server_exit(server);
+                usleep(100000);
                 server.should_exit = true;
             }
         } else {
@@ -2549,6 +2569,16 @@ bool wait_for_server(const std::string &socket_path, int attempts, useconds_t sl
     return false;
 }
 
+bool should_run_server_only() {
+    return !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO);
+}
+
+int start_server_only(const std::string &socket_path) {
+    const winsize initial_size = get_winsize_from_fd(STDIN_FILENO);
+    redirect_stdio_to_devnull();
+    return server_process(socket_path, initial_size);
+}
+
 int start_server_and_attach(const std::string &socket_path, bool read_only) {
     const winsize initial_size = get_winsize_from_fd(STDIN_FILENO);
 
@@ -2567,7 +2597,7 @@ int start_server_and_attach(const std::string &socket_path, bool read_only) {
         _exit(rc);
     }
 
-    if (!wait_for_server(socket_path, 100, 10000)) {
+    if (!wait_for_server(socket_path, 800, 10000)) {
         std::cerr << "failed to start server at " << socket_path << "\n";
         return 1;
     }
@@ -2603,12 +2633,13 @@ int main(int argc, char **argv) {
     const std::string socket_path = get_socket_path();
 
     if (argc == 1) {
+        const bool server_only = should_run_server_only();
         const int existing_fd = connect_to_server(socket_path);
         if (existing_fd >= 0) {
             close(existing_fd);
-            return attach_to_existing_server(socket_path, false);
+            return server_only ? 0 : attach_to_existing_server(socket_path, false);
         }
-        return start_server_and_attach(socket_path, false);
+        return server_only ? start_server_only(socket_path) : start_server_and_attach(socket_path, false);
     }
 
     if (argc == 2 && std::string(argv[1]) == "attach") {

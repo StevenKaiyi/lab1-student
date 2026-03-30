@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+﻿
 import argparse, json, os, pty, re, select, shutil, signal, socket, struct, subprocess, sys, tempfile, time
 from pathlib import Path
 import yaml

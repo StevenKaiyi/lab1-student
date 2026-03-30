@@ -8,6 +8,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -31,6 +32,8 @@ constexpr int kDefaultRows = 24;
 constexpr int kDefaultCols = 80;
 constexpr size_t kMaxPayload = 8192;
 constexpr size_t kMaxMessageSize = sizeof(uint32_t) * 2 + sizeof(int32_t) * 2 + kMaxPayload;
+constexpr int32_t kAttachDefaultSession = -1;
+constexpr int32_t kCreateNewSession = -2;
 
 volatile sig_atomic_t g_server_signal_fd = -1;
 volatile sig_atomic_t g_client_signal_fd = -1;
@@ -155,6 +158,16 @@ void client_sigwinch_handler(int) {
     signal_write_byte(static_cast<int>(g_client_signal_fd));
 }
 
+void close_inherited_fds_in_child() {
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0) {
+        max_fd = 1024;
+    }
+    for (int fd = STDERR_FILENO + 1; fd < max_fd; ++fd) {
+        close(fd);
+    }
+}
+
 class TerminalModeGuard {
 public:
     TerminalModeGuard() = default;
@@ -214,6 +227,8 @@ enum class MessageType : uint32_t {
     kServerExit = 6,
     kServerRedraw = 7,
     kServerStatus = 8,
+    kClientListSessions = 9,
+    kClientKillSession = 10,
 };
 
 struct Message {
@@ -295,6 +310,7 @@ struct ClientConnection {
     bool read_only = false;
     winsize size{};
     bool has_size = false;
+    int attached_session_id = -1;
 };
 
 struct Pane {
@@ -365,6 +381,13 @@ struct SessionState {
     winsize size{};
 };
 
+struct ManagedSession {
+    int session_id = -1;
+    SessionState state{};
+    int exit_code = 0;
+    int exit_signal = 0;
+};
+
 bool pane_is_present(const PaneSlot &slot) {
     return slot.state != PaneState::kDestroyed;
 }
@@ -385,10 +408,58 @@ struct ServerState {
     std::chrono::steady_clock::time_point shutdown_deadline{};
     int final_exit_code = 0;
     int final_exit_signal = 0;
-    SessionState session{};
+    int next_session_id = 0;
+    std::vector<ManagedSession> sessions;
     std::vector<ClientConnection> clients;
 };
 
+ManagedSession *find_managed_session(ServerState &server, int session_id) {
+    for (ManagedSession &session : server.sessions) {
+        if (session.session_id == session_id) {
+            return &session;
+        }
+    }
+    return nullptr;
+}
+
+const ManagedSession *find_managed_session(const ServerState &server, int session_id) {
+    for (const ManagedSession &session : server.sessions) {
+        if (session.session_id == session_id) {
+            return &session;
+        }
+    }
+    return nullptr;
+}
+
+SessionState *find_client_session(ServerState &server, const ClientConnection &client) {
+    if (ManagedSession *managed = find_managed_session(server, client.attached_session_id); managed != nullptr) {
+        return &managed->state;
+    }
+    return nullptr;
+}
+
+ptrdiff_t find_client_index_by_fd(const ServerState &server, int fd) {
+    for (size_t i = 0; i < server.clients.size(); ++i) {
+        if (server.clients[i].fd == fd) {
+            return static_cast<ptrdiff_t>(i);
+        }
+    }
+    return -1;
+}
+
+const SessionState *find_client_session(const ServerState &server, const ClientConnection &client) {
+    if (const ManagedSession *managed = find_managed_session(server, client.attached_session_id); managed != nullptr) {
+        return &managed->state;
+    }
+    return nullptr;
+}
+
+int default_attach_session_id(const ServerState &server) {
+    if (server.sessions.empty()) {
+        return -1;
+    }
+    return server.sessions.front().session_id;
+}
 enum class ClientInputMode : uint32_t {
     kNormal = 1,
     kPrefix = 2,
@@ -1227,7 +1298,7 @@ PaneSlot *find_pipeout_slot_by_pid(SessionState &session, pid_t pid) {
 
 void redirect_stdio_to_devnull();
 bool apply_winsize(int master_fd, const winsize &ws);
-void signal_foreground_process_group(int master_fd, int sig);
+void signal_foreground_process_group(const Pane &pane, int sig);
 
 std::vector<size_t> collect_live_pane_indices(const SessionState &session) {
     std::vector<size_t> indices;
@@ -1289,7 +1360,7 @@ void apply_session_layout(SessionState &session) {
             if (slot.pane.master_fd >= 0) {
                 apply_winsize(slot.pane.master_fd, slot.pane.size);
                 if (size_changed) {
-                    signal_foreground_process_group(slot.pane.master_fd, SIGWINCH);
+                    signal_foreground_process_group(slot.pane, SIGWINCH);
                 }
             }
             break;
@@ -1484,8 +1555,8 @@ bool session_has_live_panes(const SessionState &session) {
 }
 
 
-bool send_client_hello(int socket_fd, bool read_only) {
-    return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, 0, nullptr, 0);
+bool send_client_hello(int socket_fd, bool read_only, int session_request) {
+    return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, session_request, nullptr, 0);
 }
 
 bool apply_winsize(int master_fd, const winsize &ws) {
@@ -1500,8 +1571,19 @@ pid_t foreground_process_group(int master_fd) {
     return pgid;
 }
 
-void signal_foreground_process_group(int master_fd, int sig) {
-    const pid_t pgid = foreground_process_group(master_fd);
+pid_t pane_signal_process_group(const Pane &pane) {
+    pid_t pgid = -1;
+    if (pane.master_fd >= 0) {
+        pgid = foreground_process_group(pane.master_fd);
+    }
+    if (pgid <= 0 && pane.child_pid > 0) {
+        pgid = getpgid(pane.child_pid);
+    }
+    return pgid;
+}
+
+void signal_foreground_process_group(const Pane &pane, int sig) {
+    const pid_t pgid = pane_signal_process_group(pane);
     if (pgid <= 0) {
         return;
     }
@@ -1510,12 +1592,14 @@ void signal_foreground_process_group(int master_fd, int sig) {
     }
 }
 
-winsize session_size_from_clients(const std::vector<ClientConnection> &clients, winsize fallback) {
+winsize session_size_from_clients(const std::vector<ClientConnection> &clients,
+                                  int session_id,
+                                  winsize fallback) {
     fallback = normalize_winsize(fallback);
     bool have_size = false;
     winsize size{};
     for (const ClientConnection &client : clients) {
-        if (!client.has_size) {
+        if (!client.has_size || client.attached_session_id != session_id) {
             continue;
         }
         if (!have_size) {
@@ -1529,8 +1613,127 @@ winsize session_size_from_clients(const std::vector<ClientConnection> &clients, 
     return have_size ? normalize_winsize(size) : fallback;
 }
 
-void refresh_session_size_from_clients(ServerState &server) {
-    server.session.size = session_size_from_clients(server.clients, server.session.size);
+void refresh_session_size_from_clients(ServerState &server, int session_id) {
+    if (ManagedSession *managed = find_managed_session(server, session_id); managed != nullptr) {
+        managed->state.size = session_size_from_clients(server.clients, session_id, managed->state.size);
+    }
+}
+
+void refresh_all_session_sizes(ServerState &server) {
+    for (const ManagedSession &managed : server.sessions) {
+        refresh_session_size_from_clients(server, managed.session_id);
+    }
+}
+
+bool spawn_pane_slot(SessionState &session, int pane_id, const winsize &size);
+
+bool create_managed_session(ServerState &server, const winsize &initial_size, int &session_id) {
+    ManagedSession managed{};
+    managed.session_id = server.next_session_id++;
+    managed.state.size = initial_size;
+    if (!spawn_pane_slot(managed.state, 0, initial_size)) {
+        return false;
+    }
+    managed.state.focused_pane_id = 0;
+    apply_session_layout(managed.state);
+    session_id = managed.session_id;
+    server.sessions.push_back(std::move(managed));
+    return true;
+}
+
+bool session_ready_for_removal(const ManagedSession &managed) {
+    if (session_has_live_panes(managed.state)) {
+        return false;
+    }
+    for (const PaneSlot &slot : managed.state.panes) {
+        if (slot.state != PaneState::kDestroyed) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void cleanup_managed_session(ManagedSession &managed) {
+    for (PaneSlot &slot : managed.state.panes) {
+        cleanup_pane_outputs(slot);
+        if (slot.pane.child_pid > 0 && !slot.pane.child_reaped) {
+            kill(slot.pane.child_pid, SIGHUP);
+            waitpid(slot.pane.child_pid, nullptr, 0);
+            slot.pane.child_reaped = true;
+        }
+        close_fd_if_valid(slot.pane.master_fd);
+        slot.pane.master_closed = true;
+        slot.state = PaneState::kDestroyed;
+    }
+}
+
+void request_session_shutdown(ManagedSession &managed) {
+    for (PaneSlot &slot : managed.state.panes) {
+        if (slot.state == PaneState::kDestroyed) {
+            continue;
+        }
+        signal_foreground_process_group(slot.pane, SIGHUP);
+        if (slot.pane.child_pid > 0) {
+            kill(slot.pane.child_pid, SIGHUP);
+        }
+        destroy_pane_slot(slot);
+    }
+    maybe_repair_focus(managed.state);
+    apply_session_layout(managed.state);
+}
+
+void reap_children(ServerState &server) {
+    while (true) {
+        int status = 0;
+        const pid_t pid = waitpid(-1, &status, WNOHANG);
+        if (pid <= 0) {
+            break;
+        }
+
+        bool handled = false;
+        for (ManagedSession &managed : server.sessions) {
+            if (PaneSlot *pipe_slot = find_pipeout_slot_by_pid(managed.state, pid); pipe_slot != nullptr) {
+                close_fd_if_valid(pipe_slot->output.pipeout.write_fd);
+                pipe_slot->output.pipeout.child_pid = -1;
+                handled = true;
+                break;
+            }
+            for (PaneSlot &slot : managed.state.panes) {
+                if (pid != slot.pane.child_pid) {
+                    continue;
+                }
+                slot.pane.child_reaped = true;
+                if (slot.state != PaneState::kDestroyed) {
+                    slot.state = PaneState::kReaped;
+                }
+                cleanup_pane_outputs(slot);
+                if (WIFEXITED(status)) {
+                    slot.pane.exit_code = WEXITSTATUS(status);
+                    slot.pane.exit_signal = 0;
+                } else if (WIFSIGNALED(status)) {
+                    slot.pane.exit_code = 128 + WTERMSIG(status);
+                    slot.pane.exit_signal = WTERMSIG(status);
+                }
+                managed.exit_code = slot.pane.exit_code;
+                managed.exit_signal = slot.pane.exit_signal;
+                server.final_exit_code = slot.pane.exit_code;
+                server.final_exit_signal = slot.pane.exit_signal;
+                handled = true;
+                break;
+            }
+            if (handled) {
+                break;
+            }
+        }
+    }
+}
+
+std::string format_session_listing(const ServerState &server) {
+    std::ostringstream out;
+    for (const ManagedSession &managed : server.sessions) {
+        out << managed.session_id << "\n";
+    }
+    return out.str();
 }
 
 std::string choose_shell() {
@@ -1575,9 +1778,7 @@ bool spawn_shell_pane(Pane &pane, const winsize &initial_size) {
         if (tcsetpgrp(STDIN_FILENO, getpgrp()) < 0) {
             _exit(1);
         }
-        if (slave_fd > STDERR_FILENO) {
-            close(slave_fd);
-        }
+        close_inherited_fds_in_child();
 
         const std::string shell = choose_shell();
         if (std::getenv("TERM") == nullptr) {
@@ -1612,6 +1813,12 @@ bool spawn_pane_slot(SessionState &session, int pane_id, const winsize &size) {
 }
 
 std::string handle_client_command(ServerState &server, const ClientConnection &client, const std::string &raw_command) {
+    SessionState *attached_session = find_client_session(server, client);
+    if (attached_session == nullptr) {
+        return format_error("client is not attached to a session");
+    }
+    SessionState &session = *attached_session;
+
     std::string command = trim_ascii_whitespace(raw_command);
     if (!command.empty() && command.front() == ':') {
         command.erase(command.begin());
@@ -1635,12 +1842,12 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_error("read-only clients cannot run :new");
         }
 
-        const int pane_id = server.session.next_pane_id++;
-        if (!spawn_pane_slot(server.session, pane_id, server.session.size)) {
+        const int pane_id = session.next_pane_id++;
+        if (!spawn_pane_slot(session, pane_id, session.size)) {
             return format_error("failed to create pane");
         }
-        server.session.focused_pane_id = pane_id;
-        apply_session_layout(server.session);
+        session.focused_pane_id = pane_id;
+        apply_session_layout(session);
         return format_ok("created pane " + std::to_string(pane_id));
     }
 
@@ -1654,7 +1861,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":kill <pane_id>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1662,15 +1869,15 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_ok("pane " + std::to_string(pane_id) + " is already exiting");
         }
 
-        signal_foreground_process_group(slot->pane.master_fd, SIGHUP);
+        signal_foreground_process_group(slot->pane, SIGHUP);
         if (slot->pane.child_pid > 0 && kill(slot->pane.child_pid, SIGHUP) != 0 && errno != ESRCH) {
             return format_error("failed to signal pane " + std::to_string(pane_id));
         }
         destroy_pane_slot(*slot);
-        if (server.session.focused_pane_id == pane_id) {
-            server.session.focused_pane_id = choose_focus_pane_id(server.session, pane_id);
+        if (session.focused_pane_id == pane_id) {
+            session.focused_pane_id = choose_focus_pane_id(session, pane_id);
         }
-        apply_session_layout(server.session);
+        apply_session_layout(session);
         return format_ok("terminating pane " + std::to_string(pane_id));
     }
 
@@ -1683,7 +1890,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
         if (!parse_single_non_negative_int_argument(rest, pane_id)) {
             return format_usage(":focus <pane_id>");
         }
-        return focus_pane(server.session, pane_id);
+        return focus_pane(session, pane_id);
     }
 
     if (name == "next" || name == "prev") {
@@ -1694,11 +1901,11 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_error("read-only clients cannot run :" + name);
         }
 
-        const int pane_id = choose_adjacent_focus_pane_id(server.session, name == "next" ? 1 : -1);
+        const int pane_id = choose_adjacent_focus_pane_id(session, name == "next" ? 1 : -1);
         if (pane_id < 0) {
             return format_error("no panes available");
         }
-        return focus_pane(server.session, pane_id);
+        return focus_pane(session, pane_id);
     }
 
     if (name == "log") {
@@ -1712,7 +1919,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":log <pane_id> <file_path>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1732,7 +1939,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":log-stop <pane_id>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1751,7 +1958,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":pipeout <pane_id> <cmd>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1771,7 +1978,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":pipeout-stop <pane_id>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1790,7 +1997,7 @@ std::string handle_client_command(ServerState &server, const ClientConnection &c
             return format_usage(":capture <pane_id> <file_path>");
         }
 
-        PaneSlot *slot = find_pane_slot(server.session, pane_id);
+        PaneSlot *slot = find_pane_slot(session, pane_id);
         if (slot == nullptr) {
             return format_error("pane " + std::to_string(pane_id) + " does not exist");
         }
@@ -1861,17 +2068,25 @@ int create_listen_socket(const std::string &socket_path) {
 }
 
 void remove_client(ServerState &server, size_t index) {
+    const int session_id = server.clients[index].attached_session_id;
     close_fd_if_valid(server.clients[index].fd);
     server.clients.erase(server.clients.begin() + static_cast<std::ptrdiff_t>(index));
-    refresh_session_size_from_clients(server);
+    if (session_id >= 0) {
+        refresh_session_size_from_clients(server, session_id);
+        if (ManagedSession *managed = find_managed_session(server, session_id); managed != nullptr) {
+            apply_session_layout(managed->state);
+        }
+    }
 }
 
-void broadcast_output(ServerState &server, int pane_id, const char *data, size_t size) {
-    if (PaneSlot *slot = find_pane_slot(server.session, pane_id); slot != nullptr) {
-        record_pane_output(*slot, data, size);
+void broadcast_output(ServerState &server, int session_id, int pane_id, const char *data, size_t size) {
+    if (ManagedSession *managed = find_managed_session(server, session_id); managed != nullptr) {
+        if (PaneSlot *slot = find_pane_slot(managed->state, pane_id); slot != nullptr) {
+            record_pane_output(*slot, data, size);
+        }
     }
     for (size_t i = 0; i < server.clients.size();) {
-        if (!server.clients[i].hello_received) {
+        if (!server.clients[i].hello_received || server.clients[i].attached_session_id != session_id) {
             ++i;
             continue;
         }
@@ -1914,17 +2129,32 @@ bool send_initial_client_state(int fd, const SessionState &session) {
     return send_redraw_to_client(fd, session);
 }
 
-void broadcast_redraw(ServerState &server) {
+void broadcast_redraw(ServerState &server, int session_id) {
+    const ManagedSession *managed = find_managed_session(server, session_id);
+    if (managed == nullptr) {
+        return;
+    }
     for (size_t i = 0; i < server.clients.size();) {
-        if (!server.clients[i].hello_received) {
+        if (!server.clients[i].hello_received || server.clients[i].attached_session_id != session_id) {
             ++i;
             continue;
         }
-        if (!send_redraw_to_client(server.clients[i].fd, server.session)) {
+        if (!send_redraw_to_client(server.clients[i].fd, managed->state)) {
             remove_client(server, i);
             continue;
         }
         ++i;
+    }
+}
+
+void notify_session_exit(ServerState &server, int session_id, int exit_code, int exit_signal) {
+    for (size_t i = 0; i < server.clients.size();) {
+        if (!server.clients[i].hello_received || server.clients[i].attached_session_id != session_id) {
+            ++i;
+            continue;
+        }
+        send_message(server.clients[i].fd, MessageType::kServerExit, exit_code, exit_signal, nullptr, 0);
+        remove_client(server, i);
     }
 }
 
@@ -1961,7 +2191,6 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
 
     ServerState server{};
     server.socket_path = socket_path;
-    server.session.size = initial_size;
 
     int sig_pipe[2] = {-1, -1};
     if (pipe(sig_pipe) != 0) {
@@ -1985,29 +2214,29 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
         return 1;
     }
 
-    if (!spawn_pane_slot(server.session, 0, initial_size)) {
+    int initial_session_id = -1;
+    if (!create_managed_session(server, initial_size, initial_session_id)) {
         perr("spawn pane");
         return 1;
     }
-    server.session.focused_pane_id = 0;
-    apply_session_layout(server.session);
 
     server.listen_fd = create_listen_socket(socket_path);
     if (server.listen_fd < 0) {
         perr("listen socket");
-        for (PaneSlot &slot : server.session.panes) {
-            cleanup_pane_outputs(slot);
-            if (slot.pane.child_pid > 0) {
-                kill(slot.pane.child_pid, SIGHUP);
-                waitpid(slot.pane.child_pid, nullptr, 0);
-            }
-            close_fd_if_valid(slot.pane.master_fd);
-            slot.state = PaneState::kDestroyed;
+        for (ManagedSession &managed : server.sessions) {
+            cleanup_managed_session(managed);
         }
         return 1;
     }
 
+    struct PanePollEntry {
+        int session_id = -1;
+        size_t pane_index = 0;
+    };
+
     while (!server.should_exit) {
+        reap_children(server);
+
         int poll_timeout_ms = -1;
         if (server.shutdown_pending) {
             const auto now = std::chrono::steady_clock::now();
@@ -2018,26 +2247,37 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                     server.shutdown_deadline - now).count());
             }
         }
-        const std::string redraw_before_poll = build_redraw_summary(server.session);
+
+        std::vector<std::pair<int, std::string>> redraw_before_poll;
+        redraw_before_poll.reserve(server.sessions.size());
+        for (const ManagedSession &managed : server.sessions) {
+            redraw_before_poll.push_back({managed.session_id, build_redraw_summary(managed.state)});
+        }
+
         std::vector<pollfd> pfds;
-        std::vector<size_t> pane_poll_indices;
-        const size_t polled_client_count = server.clients.size();
+        std::vector<PanePollEntry> pane_poll_entries;
+        std::vector<int> polled_client_fds;
+        polled_client_fds.reserve(server.clients.size());
         pfds.push_back({server.listen_fd, POLLIN, 0});
         pfds.push_back({server.sigchld_read_fd, POLLIN, 0});
-        for (size_t pane_index = 0; pane_index < server.session.panes.size(); ++pane_index) {
-            const PaneSlot &slot = server.session.panes[pane_index];
-            if (slot.pane.master_fd >= 0) {
-                pfds.push_back({slot.pane.master_fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
-                pane_poll_indices.push_back(pane_index);
+        for (const ManagedSession &managed : server.sessions) {
+            for (size_t pane_index = 0; pane_index < managed.state.panes.size(); ++pane_index) {
+                const PaneSlot &slot = managed.state.panes[pane_index];
+                if (slot.pane.master_fd >= 0) {
+                    pfds.push_back({slot.pane.master_fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
+                    pane_poll_entries.push_back({managed.session_id, pane_index});
+                }
             }
         }
         for (const ClientConnection &client : server.clients) {
             pfds.push_back({client.fd, static_cast<short>(POLLIN | POLLHUP | POLLERR), 0});
+            polled_client_fds.push_back(client.fd);
         }
 
         const int rc = poll(pfds.data(), pfds.size(), poll_timeout_ms);
         if (rc < 0) {
             if (errno == EINTR) {
+                reap_children(server);
                 continue;
             }
             perr("poll(server)");
@@ -2049,55 +2289,29 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             const int client_fd = accept(server.listen_fd, nullptr, nullptr);
             if (client_fd >= 0) {
                 set_cloexec(client_fd);
-                server.clients.push_back({client_fd, false, false, {}, false});
+                server.clients.push_back({client_fd, false, false, {}, false, -1});
             }
         }
         ++idx;
 
         if (pfds[idx].revents & POLLIN) {
             drain_fd(server.sigchld_read_fd);
-            while (true) {
-                int status = 0;
-                const pid_t pid = waitpid(-1, &status, WNOHANG);
-                if (pid <= 0) {
-                    break;
-                }
-                if (PaneSlot *pipe_slot = find_pipeout_slot_by_pid(server.session, pid); pipe_slot != nullptr) {
-                    close_fd_if_valid(pipe_slot->output.pipeout.write_fd);
-                    pipe_slot->output.pipeout.child_pid = -1;
-                    continue;
-                }
-                for (PaneSlot &slot : server.session.panes) {
-                    if (pid != slot.pane.child_pid) {
-                        continue;
-                    }
-                    slot.pane.child_reaped = true;
-                    if (slot.state != PaneState::kDestroyed) {
-                        slot.state = PaneState::kReaped;
-                    }
-                    cleanup_pane_outputs(slot);
-                    if (WIFEXITED(status)) {
-                        slot.pane.exit_code = WEXITSTATUS(status);
-                        slot.pane.exit_signal = 0;
-                    } else if (WIFSIGNALED(status)) {
-                        slot.pane.exit_code = 128 + WTERMSIG(status);
-                        slot.pane.exit_signal = WTERMSIG(status);
-                    }
-                    server.final_exit_code = slot.pane.exit_code;
-                    server.final_exit_signal = slot.pane.exit_signal;
-                    break;
-                }
-            }
+            reap_children(server);
         }
         ++idx;
 
-        for (size_t pane_poll_cursor = 0; pane_poll_cursor < pane_poll_indices.size(); ++pane_poll_cursor, ++idx) {
-            PaneSlot &slot = server.session.panes[pane_poll_indices[pane_poll_cursor]];
+        for (size_t pane_poll_cursor = 0; pane_poll_cursor < pane_poll_entries.size(); ++pane_poll_cursor, ++idx) {
+            const PanePollEntry &entry = pane_poll_entries[pane_poll_cursor];
+            ManagedSession *managed = find_managed_session(server, entry.session_id);
+            if (managed == nullptr || entry.pane_index >= managed->state.panes.size()) {
+                continue;
+            }
+            PaneSlot &slot = managed->state.panes[entry.pane_index];
             if (pfds[idx].revents & (POLLIN | POLLHUP | POLLERR)) {
                 char buffer[4096];
                 const ssize_t read_rc = read(slot.pane.master_fd, buffer, sizeof(buffer));
                 if (read_rc > 0) {
-                    broadcast_output(server, slot.pane_id, buffer, static_cast<size_t>(read_rc));
+                    broadcast_output(server, entry.session_id, slot.pane_id, buffer, static_cast<size_t>(read_rc));
                 } else if (read_rc == 0 || (read_rc < 0 && errno != EINTR && errno != EAGAIN)) {
                     close_fd_if_valid(slot.pane.master_fd);
                     slot.pane.master_closed = true;
@@ -2108,8 +2322,14 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             }
         }
 
-        for (size_t client_index = 0; client_index < polled_client_count; ++idx) {
+        for (size_t polled_client_index = 0; polled_client_index < polled_client_fds.size(); ++polled_client_index, ++idx) {
             const short revents = idx < pfds.size() ? pfds[idx].revents : 0;
+            const ptrdiff_t found_index = find_client_index_by_fd(server, polled_client_fds[polled_client_index]);
+            if (found_index < 0) {
+                continue;
+            }
+            const size_t client_index = static_cast<size_t>(found_index);
+
             bool keep_client = true;
             if (revents & (POLLHUP | POLLERR)) {
                 keep_client = false;
@@ -2118,24 +2338,79 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 if (!recv_message(server.clients[client_index].fd, message)) {
                     keep_client = false;
                 } else if (!server.clients[client_index].hello_received) {
-                    if (message.type != MessageType::kClientHello) {
+                    if (message.type == MessageType::kClientListSessions) {
+                        const std::string listing = format_session_listing(server);
+                        send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
+                                     listing.data(), listing.size());
+                        keep_client = false;
+                    } else if (message.type == MessageType::kClientKillSession) {
+                        const int session_id = message.arg0;
+                        ManagedSession *managed = find_managed_session(server, session_id);
+                        std::string status = format_error("session " + std::to_string(session_id) + " does not exist");
+                        if (managed != nullptr) {
+                            request_session_shutdown(*managed);
+                            status = format_ok("terminating session " + std::to_string(session_id));
+                        }
+                        send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
+                                     status.data(), status.size());
+                        keep_client = false;
+                    } else if (message.type != MessageType::kClientHello) {
                         keep_client = false;
                     } else {
                         server.clients[client_index].hello_received = true;
                         server.clients[client_index].read_only = message.arg0 != 0;
-                        if (!send_initial_client_state(server.clients[client_index].fd, server.session)) {
+
+                        int target_session_id = message.arg1;
+                        if (target_session_id == kCreateNewSession) {
+                            if (!create_managed_session(server, initial_size, target_session_id)) {
+                                const std::string status = format_error("failed to create session");
+                                send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
+                                             status.data(), status.size());
+                                keep_client = false;
+                            }
+                        } else if (target_session_id == kAttachDefaultSession) {
+                            target_session_id = default_attach_session_id(server);
+                        }
+
+                        ManagedSession *managed = keep_client ? find_managed_session(server, target_session_id) : nullptr;
+                        if (keep_client && managed == nullptr) {
+                            const std::string status = format_error("session " + std::to_string(target_session_id) + " does not exist");
+                            send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
+                                         status.data(), status.size());
                             keep_client = false;
+                        } else if (keep_client) {
+                            server.clients[client_index].attached_session_id = target_session_id;
+                            refresh_session_size_from_clients(server, target_session_id);
+                            apply_session_layout(managed->state);
+                            if (!send_initial_client_state(server.clients[client_index].fd, managed->state)) {
+                                keep_client = false;
+                            }
                         }
                     }
                 } else if (message.type == MessageType::kClientInput) {
-                    PaneSlot *target = find_pane_slot(server.session, server.session.focused_pane_id);
-                    if (!server.clients[client_index].read_only && target != nullptr &&
-                        target->pane.master_fd >= 0 && !message.payload.empty()) {
-                        if (!write_all(target->pane.master_fd, message.payload.data(), message.payload.size())) {
-                            close_fd_if_valid(target->pane.master_fd);
-                            target->pane.master_closed = true;
-                            if (target->state == PaneState::kRunning) {
-                                target->state = PaneState::kExited;
+                    SessionState *session = find_client_session(server, server.clients[client_index]);
+                    if (session != nullptr) {
+                        PaneSlot *target = find_pane_slot(*session, session->focused_pane_id);
+                        if (!server.clients[client_index].read_only && target != nullptr &&
+                            target->pane.master_fd >= 0 && !message.payload.empty()) {
+                            if (message.payload.size() == 1 &&
+                                (message.payload[0] == 0x03 || message.payload[0] == 0x1a)) {
+                                if (!write_all(target->pane.master_fd, message.payload.data(), message.payload.size())) {
+                                    close_fd_if_valid(target->pane.master_fd);
+                                    target->pane.master_closed = true;
+                                    if (target->state == PaneState::kRunning) {
+                                        target->state = PaneState::kExited;
+                                    }
+                                } else {
+                                    signal_foreground_process_group(target->pane,
+                                                                    message.payload[0] == 0x03 ? SIGINT : SIGTSTP);
+                                }
+                            } else if (!write_all(target->pane.master_fd, message.payload.data(), message.payload.size())) {
+                                close_fd_if_valid(target->pane.master_fd);
+                                target->pane.master_closed = true;
+                                if (target->state == PaneState::kRunning) {
+                                    target->state = PaneState::kExited;
+                                }
                             }
                         }
                     }
@@ -2146,9 +2421,14 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                     ws = normalize_winsize(ws);
                     server.clients[client_index].size = ws;
                     server.clients[client_index].has_size = true;
-                    refresh_session_size_from_clients(server);
-                    apply_session_layout(server.session);
-                    broadcast_redraw(server);
+                    const int session_id = server.clients[client_index].attached_session_id;
+                    if (session_id >= 0) {
+                        refresh_session_size_from_clients(server, session_id);
+                        if (ManagedSession *managed = find_managed_session(server, session_id); managed != nullptr) {
+                            apply_session_layout(managed->state);
+                        }
+                        broadcast_redraw(server, session_id);
+                    }
                 } else if (message.type == MessageType::kClientCommand) {
                     const std::string raw_command(message.payload.begin(), message.payload.end());
                     const std::string status = handle_client_command(server, server.clients[client_index], raw_command);
@@ -2159,36 +2439,58 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                                status.rfind("ok: terminating pane ", 0) == 0 ||
                                status.rfind("ok: focused pane ", 0) == 0 ||
                                status.find("already selected") != std::string::npos) {
-                        broadcast_redraw(server);
+                        const int session_id = server.clients[client_index].attached_session_id;
+                        if (session_id >= 0) {
+                            broadcast_redraw(server, session_id);
+                        }
                     }
                 }
             }
 
             if (!keep_client) {
                 remove_client(server, client_index);
+            }
+        }
+
+        for (size_t session_index = 0; session_index < server.sessions.size();) {
+            ManagedSession &managed = server.sessions[session_index];
+            for (PaneSlot &slot : managed.state.panes) {
+                if (slot.pane.child_reaped && (slot.pane.master_fd < 0 || slot.pane.master_closed) &&
+                    slot.state != PaneState::kDestroyed) {
+                    slot.state = PaneState::kDestroyed;
+                }
+            }
+            maybe_repair_focus(managed.state);
+            apply_session_layout(managed.state);
+            ++session_index;
+        }
+
+        for (const auto &entry : redraw_before_poll) {
+            if (const ManagedSession *managed = find_managed_session(server, entry.first); managed != nullptr) {
+                if (build_redraw_summary(managed->state) != entry.second) {
+                    broadcast_redraw(server, entry.first);
+                }
+            }
+        }
+
+        for (size_t session_index = 0; session_index < server.sessions.size();) {
+            ManagedSession &managed = server.sessions[session_index];
+            if (!session_ready_for_removal(managed)) {
+                ++session_index;
                 continue;
             }
-            ++client_index;
+            notify_session_exit(server, managed.session_id, managed.exit_code, managed.exit_signal);
+            cleanup_managed_session(managed);
+            server.sessions.erase(server.sessions.begin() + static_cast<std::ptrdiff_t>(session_index));
         }
 
-        for (PaneSlot &slot : server.session.panes) {
-            if (slot.pane.child_reaped && (slot.pane.master_fd < 0 || slot.pane.master_closed) &&
-                slot.state != PaneState::kDestroyed) {
-                slot.state = PaneState::kDestroyed;
-            }
-        }
-        maybe_repair_focus(server.session);
-        apply_session_layout(server.session);
-        if (build_redraw_summary(server.session) != redraw_before_poll) {
-            broadcast_redraw(server);
-        }
-
-        if (!session_has_live_panes(server.session)) {
+        if (server.sessions.empty()) {
             const auto now = std::chrono::steady_clock::now();
             if (!server.shutdown_pending) {
                 server.shutdown_pending = true;
                 server.shutdown_notice_deadline = now + std::chrono::milliseconds(300);
                 server.shutdown_deadline = now + std::chrono::milliseconds(2500);
+                server.exit_notified = false;
             }
             if (!server.exit_notified && now >= server.shutdown_notice_deadline) {
                 notify_server_exit(server);
@@ -2201,20 +2503,15 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             }
         } else {
             server.shutdown_pending = false;
+            server.exit_notified = false;
         }
     }
 
     for (ClientConnection &client : server.clients) {
         close_fd_if_valid(client.fd);
     }
-    for (PaneSlot &slot : server.session.panes) {
-        cleanup_pane_outputs(slot);
-        if (slot.pane.child_pid > 0 && !slot.pane.child_reaped) {
-            kill(slot.pane.child_pid, SIGHUP);
-            waitpid(slot.pane.child_pid, nullptr, 0);
-        }
-        close_fd_if_valid(slot.pane.master_fd);
-        slot.state = PaneState::kDestroyed;
+    for (ManagedSession &managed : server.sessions) {
+        cleanup_managed_session(managed);
     }
     close_fd_if_valid(server.sigchld_read_fd);
     close_fd_if_valid(server.sigchld_write_fd);
@@ -2223,10 +2520,10 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
     return 0;
 }
 
-int client_process(int socket_fd, bool read_only) {
+int client_process(int socket_fd, bool read_only, int session_request) {
     ignore_sigpipe();
 
-    if (!send_client_hello(socket_fd, read_only)) {
+    if (!send_client_hello(socket_fd, read_only, session_request)) {
         perr("send(client hello)");
         return 1;
     }
@@ -2353,9 +2650,26 @@ int client_process(int socket_fd, bool read_only) {
             char buffer[4096];
             const ssize_t read_rc = read(STDIN_FILENO, buffer, sizeof(buffer));
             if (read_rc > 0) {
+                std::string pending_input;
+                auto flush_pending_input = [&]() -> bool {
+                    if (pending_input.empty()) {
+                        return true;
+                    }
+                    if (!send_message(socket_fd, MessageType::kClientInput, 0, 0,
+                                      pending_input.data(), pending_input.size())) {
+                        return false;
+                    }
+                    pending_input.clear();
+                    return true;
+                };
+
                 for (ssize_t i = 0; i < read_rc && !done; ++i) {
                     const char ch = buffer[i];
                     if (input_mode == ClientInputMode::kCommand) {
+                        if (!flush_pending_input()) {
+                            done = true;
+                            break;
+                        }
                         if (ch == '\r' || ch == '\n') {
                             if (!clear_command_prompt(command_buffer)) {
                                 done = true;
@@ -2406,6 +2720,10 @@ int client_process(int socket_fd, bool read_only) {
                     }
 
                     if (input_mode == ClientInputMode::kPrefix) {
+                        if (!flush_pending_input()) {
+                            done = true;
+                            break;
+                        }
                         if (!prefix_sequence.empty() || ch == kEscapeKey) {
                             prefix_sequence.push_back(ch);
                             if (prefix_sequence == std::string(1, kEscapeKey) ||
@@ -2476,17 +2794,30 @@ int client_process(int socket_fd, bool read_only) {
                     }
 
                     if (ch == kPrefixKey) {
+                        if (!flush_pending_input()) {
+                            done = true;
+                            break;
+                        }
                         input_mode = ClientInputMode::kPrefix;
                         prefix_sequence.clear();
                         continue;
                     }
 
                     if (!read_only) {
-                        if (!send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
-                            done = true;
-                            break;
+                        if (ch == 0x03 || ch == 0x1a) {
+                            if (!flush_pending_input() ||
+                                !send_message(socket_fd, MessageType::kClientInput, 0, 0, &ch, 1)) {
+                                done = true;
+                                break;
+                            }
+                            continue;
                         }
+                        pending_input.push_back(ch);
                     }
+                }
+
+                if (!done && !flush_pending_input()) {
+                    done = true;
                 }
             } else if (read_rc == 0) {
                 if (!stdin_is_tty) {
@@ -2573,13 +2904,15 @@ bool should_run_server_only() {
     return !isatty(STDIN_FILENO) || !isatty(STDOUT_FILENO);
 }
 
-int start_server_only(const std::string &socket_path) {
-    const winsize initial_size = get_winsize_from_fd(STDIN_FILENO);
+int start_server_only(const std::string &socket_path, const winsize &initial_size) {
     redirect_stdio_to_devnull();
     return server_process(socket_path, initial_size);
 }
 
-int start_server_and_attach(const std::string &socket_path, bool read_only) {
+int start_server_and_attach(const char *argv0,
+                            const std::string &socket_path,
+                            bool read_only,
+                            int session_request) {
     const winsize initial_size = get_winsize_from_fd(STDIN_FILENO);
 
     const pid_t pid = fork();
@@ -2593,8 +2926,11 @@ int start_server_and_attach(const std::string &socket_path, bool read_only) {
             _exit(1);
         }
         redirect_stdio_to_devnull();
-        const int rc = server_process(socket_path, initial_size);
-        _exit(rc);
+
+        const std::string rows = std::to_string(initial_size.ws_row);
+        const std::string cols = std::to_string(initial_size.ws_col);
+        execl(argv0, argv0, "--server", rows.c_str(), cols.c_str(), static_cast<char *>(nullptr));
+        _exit(127);
     }
 
     if (!wait_for_server(socket_path, 800, 10000)) {
@@ -2607,24 +2943,95 @@ int start_server_and_attach(const std::string &socket_path, bool read_only) {
         perr("connect(server)");
         return 1;
     }
-    const int rc = client_process(socket_fd, read_only);
+    const int rc = client_process(socket_fd, read_only, session_request);
     close(socket_fd);
     return rc;
 }
 
-int attach_to_existing_server(const std::string &socket_path, bool read_only) {
+int attach_to_existing_server(const std::string &socket_path, bool read_only, int session_request) {
     const int socket_fd = connect_to_server(socket_path);
     if (socket_fd < 0) {
         perr("attach");
         return 1;
     }
-    const int rc = client_process(socket_fd, read_only);
+    const int rc = client_process(socket_fd, read_only, session_request);
     close(socket_fd);
     return rc;
 }
 
+bool receive_status_response(int socket_fd, std::string &payload) {
+    while (true) {
+        Message message;
+        if (!recv_message(socket_fd, message)) {
+            return false;
+        }
+        if (message.type == MessageType::kServerStatus) {
+            payload.assign(message.payload.begin(), message.payload.end());
+            return true;
+        }
+    }
+}
+
+int list_sessions(const std::string &socket_path) {
+    const int socket_fd = connect_to_server(socket_path);
+    if (socket_fd < 0) {
+        return 0;
+    }
+    if (!send_message(socket_fd, MessageType::kClientListSessions, 0, 0, nullptr, 0)) {
+        close(socket_fd);
+        return 1;
+    }
+    std::string payload;
+    const bool ok = receive_status_response(socket_fd, payload);
+    close(socket_fd);
+    if (!ok) {
+        return 1;
+    }
+    if (!payload.empty() && !write_stdout(payload)) {
+        return 1;
+    }
+    return 0;
+}
+
+int kill_session_on_server(const std::string &socket_path, int session_id) {
+    const int socket_fd = connect_to_server(socket_path);
+    if (socket_fd < 0) {
+        perr("kill-session");
+        return 1;
+    }
+    if (!send_message(socket_fd, MessageType::kClientKillSession, session_id, 0, nullptr, 0)) {
+        close(socket_fd);
+        return 1;
+    }
+    std::string payload;
+    const bool ok = receive_status_response(socket_fd, payload);
+    close(socket_fd);
+    if (!ok) {
+        return 1;
+    }
+    return payload.rfind("ok:", 0) == 0 ? 0 : 1;
+}
+
+bool parse_session_id_arg(const std::string &arg, int &session_id) {
+    return parse_single_non_negative_int_argument(arg, session_id);
+}
+
+bool parse_server_size_args(const char *rows_arg, const char *cols_arg, winsize &size) {
+    int rows = 0;
+    int cols = 0;
+    if (!parse_single_non_negative_int_argument(rows_arg, rows) ||
+        !parse_single_non_negative_int_argument(cols_arg, cols)) {
+        return false;
+    }
+    size.ws_row = static_cast<unsigned short>(rows);
+    size.ws_col = static_cast<unsigned short>(cols);
+    size = normalize_winsize(size);
+    return true;
+}
+
 void print_usage(const char *argv0) {
-    std::cerr << "Usage: " << argv0 << " [attach [-r]]\n";
+    std::cerr << "Usage: " << argv0
+              << " [--server <rows> <cols> | attach [-r] [session_id] | ls | kill-session <session_id>]\n";
 }
 
 }  // namespace
@@ -2632,22 +3039,63 @@ void print_usage(const char *argv0) {
 int main(int argc, char **argv) {
     const std::string socket_path = get_socket_path();
 
+    if (argc == 4 && std::string(argv[1]) == "--server") {
+        winsize initial_size{};
+        if (!parse_server_size_args(argv[2], argv[3], initial_size)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        return start_server_only(socket_path, initial_size);
+    }
+
     if (argc == 1) {
         const bool server_only = should_run_server_only();
         const int existing_fd = connect_to_server(socket_path);
         if (existing_fd >= 0) {
             close(existing_fd);
-            return server_only ? 0 : attach_to_existing_server(socket_path, false);
+            return server_only ? 0 : attach_to_existing_server(socket_path, false, kCreateNewSession);
         }
-        return server_only ? start_server_only(socket_path) : start_server_and_attach(socket_path, false);
+        return server_only ? start_server_only(socket_path, get_winsize_from_fd(STDIN_FILENO))
+                           : start_server_and_attach(argv[0], socket_path, false, 0);
+    }
+
+    if (argc == 2 && std::string(argv[1]) == "ls") {
+        return list_sessions(socket_path);
     }
 
     if (argc == 2 && std::string(argv[1]) == "attach") {
-        return attach_to_existing_server(socket_path, false);
+        return attach_to_existing_server(socket_path, false, kAttachDefaultSession);
     }
 
     if (argc == 3 && std::string(argv[1]) == "attach" && std::string(argv[2]) == "-r") {
-        return attach_to_existing_server(socket_path, true);
+        return attach_to_existing_server(socket_path, true, kAttachDefaultSession);
+    }
+
+    if (argc == 3 && std::string(argv[1]) == "attach") {
+        int session_id = -1;
+        if (!parse_session_id_arg(argv[2], session_id)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        return attach_to_existing_server(socket_path, false, session_id);
+    }
+
+    if (argc == 4 && std::string(argv[1]) == "attach" && std::string(argv[2]) == "-r") {
+        int session_id = -1;
+        if (!parse_session_id_arg(argv[3], session_id)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        return attach_to_existing_server(socket_path, true, session_id);
+    }
+
+    if (argc == 3 && std::string(argv[1]) == "kill-session") {
+        int session_id = -1;
+        if (!parse_session_id_arg(argv[2], session_id)) {
+            print_usage(argv[0]);
+            return 1;
+        }
+        return kill_session_on_server(socket_path, session_id);
     }
 
     print_usage(argv[0]);

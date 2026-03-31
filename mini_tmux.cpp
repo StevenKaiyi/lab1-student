@@ -469,12 +469,6 @@ ptrdiff_t find_client_index_by_fd(const ServerState &server, int fd) {
     return -1;
 }
 
-const SessionState *find_client_session(const ServerState &server, const ClientConnection &client) {
-    if (const ManagedSession *managed = find_managed_session(server, client.attached_session_id); managed != nullptr) {
-        return &managed->state;
-    }
-    return nullptr;
-}
 
 int default_attach_session_id(const ServerState &server) {
     if (server.sessions.empty()) {
@@ -1641,11 +1635,6 @@ void refresh_session_size_from_clients(ServerState &server, int session_id) {
     }
 }
 
-void refresh_all_session_sizes(ServerState &server) {
-    for (const ManagedSession &managed : server.sessions) {
-        refresh_session_size_from_clients(server, managed.session_id);
-    }
-}
 
 bool spawn_pane_slot(SessionState &session, int pane_id, const winsize &size);
 
@@ -3133,4 +3122,5 @@ int main(int argc, char **argv) {
     print_usage(argv[0]);
     return 1;
 }
+
 

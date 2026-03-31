@@ -74,6 +74,28 @@ bool write_all(int fd, const void *buf, size_t len) {
     return true;
 }
 
+bool write_best_effort(int fd, const void *buf, size_t len) {
+    const char *ptr = static_cast<const char *>(buf);
+    size_t written = 0;
+    while (written < len) {
+        const ssize_t rc = write(fd, ptr + written, len - written);
+        if (rc < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return true;
+            }
+            return false;
+        }
+        if (rc == 0) {
+            return false;
+        }
+        written += static_cast<size_t>(rc);
+    }
+    return true;
+}
+
 void drain_fd(int fd) {
     char buffer[256];
     while (true) {
@@ -486,7 +508,7 @@ void close_fd_if_valid(int &fd) {
 }
 
 bool write_stdout(const std::string &text) {
-    return write_all(STDOUT_FILENO, text.data(), text.size());
+    return write_best_effort(STDOUT_FILENO, text.data(), text.size());
 }
 
 bool enter_alternate_screen() {
@@ -1074,7 +1096,7 @@ bool render_client_view(const ClientViewState &view, const std::string &command_
         frame += "\x1b[H";
     }
     frame += "\x1b[?7h\x1b[?25h";
-    return write_all(STDOUT_FILENO, frame.data(), frame.size());
+    return write_best_effort(STDOUT_FILENO, frame.data(), frame.size());
 }
 std::string trim_ascii_whitespace(const std::string &input) {
     size_t start = 0;
@@ -2554,6 +2576,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
         return 1;
     }
     const bool stdin_is_tty = isatty(STDIN_FILENO);
+    set_nonblock(STDOUT_FILENO);
 
     if (!show_local_status(read_only ?
                            "mini-tmux: attached in read-only mode" :
@@ -2613,6 +2636,15 @@ int client_process(int socket_fd, bool read_only, int session_request) {
         }
         reset_prefix_mode();
         return true;
+    };
+    auto enter_command_mode = [&]() -> bool {
+        input_mode = ClientInputMode::kCommand;
+        prefix_sequence.clear();
+        command_buffer.clear();
+        if (use_structured_client_render(view_state)) {
+            return render_client_view(view_state, command_buffer, input_mode);
+        }
+        return begin_command_prompt();
     };
 
     int exit_code = 0;
@@ -2756,15 +2788,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                         }
 
                         if (ch == ':') {
-                            input_mode = ClientInputMode::kCommand;
-                            prefix_sequence.clear();
-                            command_buffer.clear();
-                            if (use_structured_client_render(view_state)) {
-                                if (!render_client_view(view_state, command_buffer, input_mode)) {
-                                    done = true;
-                                    break;
-                                }
-                            } else if (!begin_command_prompt()) {
+                            if (!enter_command_mode()) {
                                 done = true;
                                 break;
                             }
@@ -2789,6 +2813,14 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                                 done = true;
                                 break;
                             }
+                        }
+                        continue;
+                    }
+
+                    if (pending_input.empty() && ch == ':') {
+                        if (!enter_command_mode()) {
+                            done = true;
+                            break;
                         }
                         continue;
                     }
@@ -3101,3 +3133,4 @@ int main(int argc, char **argv) {
     print_usage(argv[0]);
     return 1;
 }
+

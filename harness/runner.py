@@ -20,7 +20,7 @@ import subprocess
 import tempfile
 
 HELPERS_DIR = Path(__file__).parent / "helpers"
-PROBE_BIN = str(HELPERS_DIR / "probe")
+PROBE_BIN = str(Path(__file__).parent.parent / "helpers" / "probe")
 
 
 @dataclass
@@ -476,3 +476,4 @@ class Runner:
                              message="Readonly client input was NOT blocked")
         return StepResult(action="verify_readonly_blocked", passed=True,
                          message="Readonly client input correctly blocked")
+

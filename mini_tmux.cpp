@@ -326,6 +326,33 @@ bool recv_message(int fd, Message &message) {
     }
 }
 
+bool parse_size_payload(const std::vector<char> &payload, winsize &size) {
+    if (payload.size() != sizeof(uint16_t) * 2) {
+        return false;
+    }
+    uint16_t dims[2]{};
+    std::memcpy(dims, payload.data(), sizeof(dims));
+    size.ws_row = dims[0];
+    size.ws_col = dims[1];
+    size = normalize_winsize(size);
+    return true;
+}
+
+template <typename T>
+void append_payload_value(std::string &payload, T value) {
+    payload.append(reinterpret_cast<const char *>(&value), sizeof(value));
+}
+
+template <typename T>
+bool read_payload_value(const std::string &payload, size_t &offset, T &value) {
+    if (offset + sizeof(value) > payload.size()) {
+        return false;
+    }
+    std::memcpy(&value, payload.data() + static_cast<std::ptrdiff_t>(offset), sizeof(value));
+    offset += sizeof(value);
+    return true;
+}
+
 struct ClientConnection {
     int fd = -1;
     bool hello_received = false;
@@ -333,6 +360,7 @@ struct ClientConnection {
     winsize size{};
     bool has_size = false;
     int attached_session_id = -1;
+    bool exit_sent = false;
 };
 
 struct Pane {
@@ -378,7 +406,6 @@ struct PaneOutputState {
     int log_fd = -1;
     PipeoutState pipeout{};
     TextScreenBuffer capture{};
-    std::string replay_output;
 };
 
 struct PaneSlot {
@@ -531,7 +558,6 @@ bool show_local_status(const std::string &text) {
 
 constexpr size_t kClientBufferedLines = 200;
 constexpr size_t kCaptureBufferedLines = 1000;
-constexpr size_t kReplayBufferedBytes = 64 * 1024;
 
 ClientPaneBuffer *find_client_buffer(ClientViewState &view, int pane_id) {
     for (ClientPaneBuffer &buffer : view.buffers) {
@@ -837,50 +863,68 @@ void append_client_output(ClientViewState &view, int pane_id, const std::string 
     append_text_output(buffer->text, chunk, kClientBufferedLines);
 }
 
-std::string redraw_summary_line(const std::string &payload) {
-    const size_t newline = payload.find('\n');
-    if (newline == std::string::npos) {
-        return payload;
-    }
-    return payload.substr(0, newline);
-}
-
-std::vector<PaneLayout> parse_redraw_layout(const std::string &payload, int focused_pane_id) {
+bool parse_redraw_payload(const std::string &payload, ClientViewState &view) {
     std::vector<PaneLayout> layout;
-    const std::string summary = redraw_summary_line(payload);
-    const size_t marker = summary.find(" layout=");
-    if (marker == std::string::npos) {
-        return layout;
-    }
-    const std::string body = summary.substr(marker + 8);
-    size_t pos = 0;
-    while (pos < body.size()) {
-        const size_t comma = body.find(',', pos);
-        const std::string token = body.substr(pos, comma == std::string::npos ? std::string::npos : comma - pos);
-        if (!token.empty()) {
-            const size_t open = token.find('[');
-            const size_t close = token.find(']');
-            const size_t x = token.find('x', open);
-            const size_t at = token.find('@', x);
-            const size_t star = token.find('*');
-            if (open != std::string::npos && close != std::string::npos &&
-                x != std::string::npos && at != std::string::npos) {
-                PaneLayout pane{};
-                const size_t id_end = star != std::string::npos && star < open ? star : open;
-                pane.pane_id = std::stoi(token.substr(0, id_end));
-                pane.focused = (star != std::string::npos && star < open) || pane.pane_id == focused_pane_id;
-                pane.rows = static_cast<unsigned short>(std::stoi(token.substr(open + 1, x - open - 1)));
-                pane.cols = static_cast<unsigned short>(std::stoi(token.substr(x + 1, at - x - 1)));
-                pane.top = static_cast<unsigned short>(std::stoi(token.substr(at + 1, close - at - 1)));
-                layout.push_back(pane);
-            }
+    std::vector<ClientPaneBuffer> buffers;
+    size_t offset = 0;
+    if (payload.rfind("redraw:", 0) == 0) {
+        const size_t newline = payload.find('\n');
+        if (newline == std::string::npos) {
+            return false;
         }
-        if (comma == std::string::npos) {
-            break;
-        }
-        pos = comma + 1;
+        offset = newline + 1;
     }
-    return layout;
+    uint32_t pane_count = 0;
+    if (!read_payload_value(payload, offset, pane_count)) {
+        return false;
+    }
+
+    int focused_pane_id = -1;
+    for (uint32_t i = 0; i < pane_count; ++i) {
+        PaneLayout pane{};
+        uint8_t focused = 0;
+        uint16_t cursor_row = 0;
+        uint16_t cursor_col = 0;
+        uint32_t snapshot_size = 0;
+        if (!read_payload_value(payload, offset, pane.pane_id) ||
+            !read_payload_value(payload, offset, pane.top) ||
+            !read_payload_value(payload, offset, pane.rows) ||
+            !read_payload_value(payload, offset, pane.cols) ||
+            !read_payload_value(payload, offset, focused) ||
+            !read_payload_value(payload, offset, cursor_row) ||
+            !read_payload_value(payload, offset, cursor_col) ||
+            !read_payload_value(payload, offset, snapshot_size)) {
+            return false;
+        }
+        if (offset + snapshot_size > payload.size()) {
+            return false;
+        }
+
+        pane.focused = focused != 0;
+        if (pane.focused) {
+            focused_pane_id = pane.pane_id;
+        }
+
+        ClientPaneBuffer pane_buffer{};
+        pane_buffer.pane_id = pane.pane_id;
+        pane_buffer.text = parse_text_snapshot(
+            payload.substr(offset, snapshot_size),
+            static_cast<size_t>(cursor_row),
+            static_cast<size_t>(cursor_col));
+        offset += snapshot_size;
+
+        layout.push_back(pane);
+        buffers.push_back(std::move(pane_buffer));
+    }
+
+    if (offset != payload.size()) {
+        return false;
+    }
+
+    view.layout = std::move(layout);
+    view.buffers = std::move(buffers);
+    view.focused_pane_id = focused_pane_id;
+    return true;
 }
 
 std::string fit_to_width(const std::string &input, unsigned short width) {
@@ -893,94 +937,6 @@ std::string fit_to_width(const std::string &input, unsigned short width) {
     return input + std::string(width - input.size(), ' ');
 }
 
-bool use_structured_client_render(const ClientViewState &view) {
-    return !view.layout.empty();
-}
-
-std::vector<ClientPaneBuffer> parse_redraw_buffers(const std::string &payload) {
-    std::vector<ClientPaneBuffer> buffers;
-    size_t pos = payload.find('\n');
-    if (pos == std::string::npos) {
-        return buffers;
-    }
-    ++pos;
-
-    while (pos < payload.size()) {
-        if (payload.compare(pos, 6, "@pane ") != 0) {
-            break;
-        }
-        const size_t header_end = payload.find('\n', pos);
-        if (header_end == std::string::npos) {
-            break;
-        }
-
-        const std::string header = payload.substr(pos + 6, header_end - (pos + 6));
-        size_t field_pos = 0;
-        auto next_field = [&](std::string &field) -> bool {
-            while (field_pos < header.size() && header[field_pos] == ' ') {
-                ++field_pos;
-            }
-            if (field_pos >= header.size()) {
-                return false;
-            }
-            const size_t end = header.find(' ', field_pos);
-            field = header.substr(field_pos, end == std::string::npos ? std::string::npos : end - field_pos);
-            field_pos = end == std::string::npos ? header.size() : end + 1;
-            return true;
-        };
-        auto parse_non_negative_field = [](const std::string &value, int &parsed) -> bool {
-            if (value.empty()) {
-                return false;
-            }
-            char *end = nullptr;
-            errno = 0;
-            const long raw = std::strtol(value.c_str(), &end, 10);
-            if (errno != 0 || end == nullptr || *end != '\0' || raw < 0 || raw > INT32_MAX) {
-                return false;
-            }
-            parsed = static_cast<int>(raw);
-            return true;
-        };
-
-        std::string pane_id_text;
-        std::string cursor_row_text;
-        std::string cursor_col_text;
-        std::string size_text;
-        if (!next_field(pane_id_text) || !next_field(cursor_row_text) ||
-            !next_field(cursor_col_text) || !next_field(size_text)) {
-            break;
-        }
-
-        int pane_id = -1;
-        int parsed_cursor_row = -1;
-        int parsed_cursor_col = -1;
-        int snapshot_size = -1;
-        if (!parse_non_negative_field(pane_id_text, pane_id) ||
-            !parse_non_negative_field(cursor_row_text, parsed_cursor_row) ||
-            !parse_non_negative_field(cursor_col_text, parsed_cursor_col) ||
-            !parse_non_negative_field(size_text, snapshot_size)) {
-            break;
-        }
-
-        pos = header_end + 1;
-        const size_t snapshot_bytes = static_cast<size_t>(snapshot_size);
-        if (pos + snapshot_bytes > payload.size()) {
-            break;
-        }
-
-        ClientPaneBuffer pane_buffer{};
-        pane_buffer.pane_id = pane_id;
-        pane_buffer.text = parse_text_snapshot(payload.substr(pos, snapshot_bytes),
-                                               static_cast<size_t>(parsed_cursor_row),
-                                               static_cast<size_t>(parsed_cursor_col));
-        buffers.push_back(std::move(pane_buffer));
-        pos += snapshot_bytes;
-        if (pos < payload.size() && payload[pos] == '\n') {
-            ++pos;
-        }
-    }
-    return buffers;
-}
 bool render_client_view(const ClientViewState &view, const std::string &command_buffer,
                         ClientInputMode input_mode) {
     std::string frame = "\x1b[?25l\x1b[?7l\x1b[H\x1b[2J";
@@ -1215,7 +1171,9 @@ void stop_pane_pipeout(PaneSlot &slot, bool terminate_process) {
             // Best-effort cleanup; the SIGCHLD path still reaps the child when it exits.
         }
     }
-    slot.output.pipeout.child_pid = -1;
+    if (pid <= 0) {
+        slot.output.pipeout.child_pid = -1;
+    }
 }
 
 void cleanup_pane_outputs(PaneSlot &slot) {
@@ -1287,16 +1245,11 @@ void record_pane_output(PaneSlot &slot, const char *data, size_t size) {
     }
 
     append_text_output(slot.output.capture, std::string(data, size), kCaptureBufferedLines);
-    slot.output.replay_output.append(data, size);
-    if (slot.output.replay_output.size() > kReplayBufferedBytes) {
-        slot.output.replay_output.erase(0, slot.output.replay_output.size() - kReplayBufferedBytes);
-    }
     if (slot.output.log_fd >= 0 && !write_all(slot.output.log_fd, data, size)) {
         close_fd_if_valid(slot.output.log_fd);
     }
     if (slot.output.pipeout.write_fd >= 0 && !write_all(slot.output.pipeout.write_fd, data, size)) {
         close_fd_if_valid(slot.output.pipeout.write_fd);
-        slot.output.pipeout.child_pid = -1;
     }
 }
 
@@ -1336,19 +1289,18 @@ std::vector<PaneLayout> compute_vertical_layout(const SessionState &session) {
     const unsigned short total_rows = session.size.ws_row == 0 ? kDefaultRows : session.size.ws_row;
     const unsigned short total_cols = session.size.ws_col == 0 ? kDefaultCols : session.size.ws_col;
     const size_t pane_count = live_indices.size();
-    const unsigned short base_rows =
-        static_cast<unsigned short>(std::max<size_t>(1, total_rows / pane_count));
-    const unsigned short extra_rows = static_cast<unsigned short>(total_rows % pane_count);
     unsigned short top = 0;
+    unsigned short remaining_rows = total_rows;
 
     for (size_t order = 0; order < live_indices.size(); ++order) {
         const PaneSlot &slot = session.panes[live_indices[order]];
-        unsigned short rows = base_rows;
-        if (order < extra_rows) {
-            rows = static_cast<unsigned short>(rows + 1);
-        }
-        if (order + 1 == live_indices.size()) {
-            rows = static_cast<unsigned short>(std::max<int>(1, total_rows - top));
+        const size_t panes_left = pane_count - order;
+        unsigned short rows = 0;
+        if (panes_left > 0) {
+            rows = static_cast<unsigned short>(remaining_rows / panes_left);
+            if (remaining_rows % panes_left != 0) {
+                rows = static_cast<unsigned short>(rows + 1);
+            }
         }
         layout.push_back(PaneLayout{
             slot.pane_id,
@@ -1358,6 +1310,7 @@ std::vector<PaneLayout> compute_vertical_layout(const SessionState &session) {
             slot.pane_id == session.focused_pane_id,
         });
         top = static_cast<unsigned short>(top + rows);
+        remaining_rows = total_rows > top ? static_cast<unsigned short>(total_rows - top) : 0;
     }
     return layout;
 }
@@ -1414,10 +1367,11 @@ std::string build_redraw_summary(const SessionState &session) {
 }
 
 std::string build_redraw_payload(const SessionState &session) {
+    const std::vector<PaneLayout> layout = compute_vertical_layout(session);
     std::string payload = build_redraw_summary(session);
     payload.push_back('\n');
+    append_payload_value(payload, static_cast<uint32_t>(layout.size()));
 
-    const std::vector<PaneLayout> layout = compute_vertical_layout(session);
     for (size_t i = 0; i < layout.size(); ++i) {
         const PaneLayout &entry = layout[i];
         for (const PaneSlot &slot : session.panes) {
@@ -1465,17 +1419,22 @@ std::string build_redraw_payload(const SessionState &session) {
             }
             visible_buffer.cursor_col = slot.output.capture.cursor_col;
             const std::string snapshot = render_text_snapshot(visible_buffer);
-            payload += "@pane " + std::to_string(slot.pane_id) + " " +
-                       std::to_string(visible_buffer.cursor_row) + " " +
-                       std::to_string(visible_buffer.cursor_col) + " " +
-                       std::to_string(snapshot.size()) + "\n";
-            payload += snapshot;
-            payload.push_back('\n');
+
+            append_payload_value(payload, static_cast<int32_t>(slot.pane_id));
+            append_payload_value(payload, entry.top);
+            append_payload_value(payload, entry.rows);
+            append_payload_value(payload, entry.cols);
+            append_payload_value(payload, static_cast<uint8_t>(entry.focused ? 1 : 0));
+            append_payload_value(payload, static_cast<uint16_t>(visible_buffer.cursor_row));
+            append_payload_value(payload, static_cast<uint16_t>(visible_buffer.cursor_col));
+            append_payload_value(payload, static_cast<uint32_t>(snapshot.size()));
+            payload.append(snapshot);
             break;
         }
     }
     return payload;
 }
+
 PaneSlot *find_pane_slot(SessionState &session, int pane_id) {
     for (PaneSlot &slot : session.panes) {
         if (slot.pane_id == pane_id && pane_is_present(slot)) {
@@ -1572,7 +1531,10 @@ bool session_has_live_panes(const SessionState &session) {
 
 
 bool send_client_hello(int socket_fd, bool read_only, int session_request) {
-    return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, session_request, nullptr, 0);
+    const winsize ws = get_winsize_from_fd(STDIN_FILENO);
+    const uint16_t dims[2] = {ws.ws_row, ws.ws_col};
+    return send_message(socket_fd, MessageType::kClientHello, read_only ? 1 : 0, session_request,
+                        reinterpret_cast<const char *>(dims), sizeof(dims));
 }
 
 bool apply_winsize(int master_fd, const winsize &ws) {
@@ -2115,28 +2077,7 @@ bool send_redraw_to_client(int fd, const SessionState &session) {
                         static_cast<int32_t>(session.panes.size()), payload.data(), payload.size());
 }
 
-bool send_replay_output_to_client(int fd, int pane_id, const std::string &output) {
-    size_t offset = 0;
-    while (offset < output.size()) {
-        const size_t chunk_size = std::min(kMaxPayload, output.size() - offset);
-        if (!send_message(fd, MessageType::kServerOutput, pane_id, 0,
-                          output.data() + static_cast<std::ptrdiff_t>(offset), chunk_size)) {
-            return false;
-        }
-        offset += chunk_size;
-    }
-    return true;
-}
-
 bool send_initial_client_state(int fd, const SessionState &session) {
-    for (const PaneSlot &slot : session.panes) {
-        if (slot.state == PaneState::kDestroyed) {
-            continue;
-        }
-        if (!send_replay_output_to_client(fd, slot.pane_id, slot.output.replay_output)) {
-            return false;
-        }
-    }
     return send_redraw_to_client(fd, session);
 }
 
@@ -2164,8 +2105,14 @@ void notify_session_exit(ServerState &server, int session_id, int exit_code, int
             ++i;
             continue;
         }
-        send_message(server.clients[i].fd, MessageType::kServerExit, exit_code, exit_signal, nullptr, 0);
-        remove_client(server, i);
+        const bool sent = send_message(server.clients[i].fd, MessageType::kServerExit,
+                                       exit_code, exit_signal, nullptr, 0);
+        server.clients[i].exit_sent = sent;
+        if (!sent) {
+            remove_client(server, i);
+            continue;
+        }
+        ++i;
     }
 }
 
@@ -2175,11 +2122,16 @@ void notify_server_exit(ServerState &server) {
             ++i;
             continue;
         }
+        if (server.clients[i].exit_sent) {
+            ++i;
+            continue;
+        }
         if (!send_message(server.clients[i].fd, MessageType::kServerExit,
                           server.final_exit_code, server.final_exit_signal, nullptr, 0)) {
             remove_client(server, i);
             continue;
         }
+        server.clients[i].exit_sent = true;
         ++i;
     }
 }
@@ -2300,7 +2252,7 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             const int client_fd = accept(server.listen_fd, nullptr, nullptr);
             if (client_fd >= 0) {
                 set_cloexec(client_fd);
-                server.clients.push_back({client_fd, false, false, {}, false, -1});
+                server.clients.push_back({client_fd, false, false, {}, false, -1, false});
             }
         }
         ++idx;
@@ -2371,9 +2323,17 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                         server.clients[client_index].hello_received = true;
                         server.clients[client_index].read_only = message.arg0 != 0;
 
+                        winsize hello_size{};
+                        if (parse_size_payload(message.payload, hello_size)) {
+                            server.clients[client_index].size = hello_size;
+                            server.clients[client_index].has_size = true;
+                        }
+
                         int target_session_id = message.arg1;
                         if (target_session_id == kCreateNewSession) {
-                            if (!create_managed_session(server, initial_size, target_session_id)) {
+                            const winsize session_size = server.clients[client_index].has_size ?
+                                server.clients[client_index].size : initial_size;
+                            if (!create_managed_session(server, session_size, target_session_id)) {
                                 const std::string status = format_error("failed to create session");
                                 send_message(server.clients[client_index].fd, MessageType::kServerStatus, 0, 0,
                                              status.data(), status.size());
@@ -2490,7 +2450,10 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 ++session_index;
                 continue;
             }
-            notify_session_exit(server, managed.session_id, managed.exit_code, managed.exit_signal);
+            const bool last_session = server.sessions.size() == 1;
+            if (!last_session) {
+                notify_session_exit(server, managed.session_id, managed.exit_code, managed.exit_signal);
+            }
             cleanup_managed_session(managed);
             server.sessions.erase(server.sessions.begin() + static_cast<std::ptrdiff_t>(session_index));
         }
@@ -2499,8 +2462,8 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
             const auto now = std::chrono::steady_clock::now();
             if (!server.shutdown_pending) {
                 server.shutdown_pending = true;
-                server.shutdown_notice_deadline = now + std::chrono::milliseconds(300);
-                server.shutdown_deadline = now + std::chrono::milliseconds(2500);
+                server.shutdown_notice_deadline = now + std::chrono::milliseconds(3000);
+                server.shutdown_deadline = now + std::chrono::milliseconds(3000);
                 server.exit_notified = false;
             }
             if (!server.exit_notified && now >= server.shutdown_notice_deadline) {
@@ -2508,7 +2471,10 @@ int server_process(const std::string &socket_path, const winsize &initial_size) 
                 server.exit_notified = true;
             }
             if (now >= server.shutdown_deadline) {
-                notify_server_exit(server);
+                if (!server.exit_notified) {
+                    notify_server_exit(server);
+                    server.exit_notified = true;
+                }
                 usleep(100000);
                 server.should_exit = true;
             }
@@ -2586,9 +2552,10 @@ int client_process(int socket_fd, bool read_only, int session_request) {
     std::string prefix_sequence;
     ClientViewState view_state{};
     bool alternate_screen_active = false;
+    bool attached_to_session = false;
 
     auto ensure_render_surface = [&]() -> bool {
-        if (!use_structured_client_render(view_state)) {
+        if (!attached_to_session) {
             if (alternate_screen_active) {
                 if (!leave_alternate_screen()) {
                     return false;
@@ -2605,6 +2572,22 @@ int client_process(int socket_fd, bool read_only, int session_request) {
         }
         return true;
     };
+    auto render_attached_view = [&]() -> bool {
+        if (!attached_to_session) {
+            return true;
+        }
+        if (!ensure_render_surface()) {
+            return false;
+        }
+        return render_client_view(view_state, command_buffer, input_mode);
+    };
+    auto show_client_status = [&](const std::string &text) -> bool {
+        view_state.local_status = text;
+        if (attached_to_session) {
+            return render_attached_view();
+        }
+        return show_local_status(text);
+    };
     const std::string arrow_prefix = std::string(1, kEscapeKey) + "[";
     const std::string arrow_up = arrow_prefix + "A";
     const std::string arrow_down = arrow_prefix + "B";
@@ -2620,7 +2603,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                               command.data(), command.size())) {
                 return false;
             }
-        } else if (!show_local_status("read-only clients cannot switch focus")) {
+        } else if (!show_client_status("read-only clients cannot switch focus")) {
             return false;
         }
         reset_prefix_mode();
@@ -2630,14 +2613,16 @@ int client_process(int socket_fd, bool read_only, int session_request) {
         input_mode = ClientInputMode::kCommand;
         prefix_sequence.clear();
         command_buffer.clear();
-        if (use_structured_client_render(view_state)) {
-            return render_client_view(view_state, command_buffer, input_mode);
+        if (attached_to_session) {
+            return render_attached_view();
         }
         return begin_command_prompt();
     };
 
     int exit_code = 0;
     bool done = false;
+    bool detached_by_user = false;
+    bool received_server_exit = false;
     while (!done) {
         pollfd pfds[3]{};
         pfds[0].fd = STDIN_FILENO;
@@ -2659,11 +2644,8 @@ int client_process(int socket_fd, bool read_only, int session_request) {
         if (pfds[2].revents & POLLIN) {
             drain_fd(sig_pipe[0]);
             send_resize_to_server(socket_fd);
-            if (use_structured_client_render(view_state)) {
-                if (!ensure_render_surface() ||
-                    !render_client_view(view_state, command_buffer, input_mode)) {
-                    done = true;
-                }
+            if (!render_attached_view()) {
+                done = true;
             }
         }
 
@@ -2692,7 +2674,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                             break;
                         }
                         if (ch == '\r' || ch == '\n') {
-                            if (!clear_command_prompt(command_buffer)) {
+                            if (!attached_to_session && !clear_command_prompt(command_buffer)) {
                                 done = true;
                                 break;
                             }
@@ -2704,7 +2686,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                             command_buffer.clear();
                             input_mode = ClientInputMode::kNormal;
                         } else if (ch == kEscapeKey || ch == 0x03) {
-                            if (!clear_command_prompt(command_buffer)) {
+                            if (!attached_to_session && !clear_command_prompt(command_buffer)) {
                                 done = true;
                                 break;
                             }
@@ -2713,7 +2695,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                         } else if (ch == kBackspaceKey || ch == '\b') {
                             if (!command_buffer.empty()) {
                                 command_buffer.pop_back();
-                                if (use_structured_client_render(view_state)) {
+                                if (attached_to_session) {
                                     if (!ensure_render_surface() ||
                                         !render_client_view(view_state, command_buffer, input_mode)) {
                                         done = true;
@@ -2726,7 +2708,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                             }
                         } else if (ch >= 32 && ch <= 126) {
                             command_buffer.push_back(ch);
-                            if (use_structured_client_render(view_state)) {
+                            if (attached_to_session) {
                                 if (!ensure_render_surface() ||
                                     !render_client_view(view_state, command_buffer, input_mode)) {
                                     done = true;
@@ -2766,9 +2748,9 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                                 }
                             } else {
                                 reset_prefix_mode();
-                                if (!show_local_status(read_only ?
-                                                       "read-only: unsupported prefix command" :
-                                                       "unsupported prefix command")) {
+                                if (!show_client_status(read_only ?
+                                                        "read-only: unsupported prefix command" :
+                                                        "unsupported prefix command")) {
                                     done = true;
                                     break;
                                 }
@@ -2783,6 +2765,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                             }
                         } else if (ch == 'd') {
                             reset_prefix_mode();
+                            detached_by_user = true;
                             done = true;
                         } else if (ch == 'n' || ch == 'p') {
                             if (!run_prefix_focus_command(ch == 'n' ? "next" : "prev")) {
@@ -2796,9 +2779,9 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                             prefix_sequence.clear();
                         } else {
                             reset_prefix_mode();
-                            if (!show_local_status(read_only ?
-                                                   "read-only: unsupported prefix command" :
-                                                   "unsupported prefix command")) {
+                            if (!show_client_status(read_only ?
+                                                    "read-only: unsupported prefix command" :
+                                                    "unsupported prefix command")) {
                                 done = true;
                                 break;
                             }
@@ -2852,9 +2835,7 @@ int client_process(int socket_fd, bool read_only, int session_request) {
             }
         }
 
-        if (pfds[1].revents & (POLLHUP | POLLERR)) {
-            done = true;
-        } else if (pfds[1].revents & POLLIN) {
+        if (pfds[1].revents & POLLIN) {
             Message message;
             if (!recv_message(socket_fd, message)) {
                 done = true;
@@ -2862,38 +2843,43 @@ int client_process(int socket_fd, bool read_only, int session_request) {
                        message.type == MessageType::kServerStatus) {
                 const std::string chunk(message.payload.begin(), message.payload.end());
                 if (message.type == MessageType::kServerStatus) {
-                    view_state.local_status = chunk;
-                    if (use_structured_client_render(view_state)) {
-                        if (!ensure_render_surface() ||
-                            !render_client_view(view_state, command_buffer, input_mode)) {
-                            done = true;
-                        }
-                    } else if (!show_local_status(chunk)) {
+                    if (!show_client_status(chunk)) {
+                        done = true;
+                    }
+                    if (!attached_to_session && chunk.rfind("error:", 0) == 0) {
+                        exit_code = 1;
                         done = true;
                     }
                 } else {
                     view_state.local_status.clear();
                     append_client_output(view_state, message.arg0, chunk);
-                    if (use_structured_client_render(view_state)) {
-                        if (!ensure_render_surface() ||
-                            !render_client_view(view_state, command_buffer, input_mode)) {
-                            done = true;
-                        }
+                    if (attached_to_session && !render_attached_view()) {
+                        done = true;
                     }
                 }
             } else if (message.type == MessageType::kServerRedraw) {
                 const std::string redraw(message.payload.begin(), message.payload.end());
-                view_state.focused_pane_id = message.arg0;
-                view_state.layout = parse_redraw_layout(redraw, message.arg0);
-                view_state.buffers = parse_redraw_buffers(redraw);
-                if (!ensure_render_surface() ||
-                    !render_client_view(view_state, command_buffer, input_mode)) {
+                if (!parse_redraw_payload(redraw, view_state)) {
                     done = true;
+                } else {
+                    attached_to_session = true;
+                    if (view_state.focused_pane_id < 0) {
+                        view_state.focused_pane_id = message.arg0;
+                    }
+                    if (!render_attached_view()) {
+                        done = true;
+                    }
                 }
             } else if (message.type == MessageType::kServerExit) {
+                received_server_exit = true;
                 exit_code = message.arg0;
                 done = true;
             }
+        } else if (pfds[1].revents & (POLLHUP | POLLERR)) {
+            if (!detached_by_user && !received_server_exit && exit_code == 0) {
+                exit_code = 1;
+            }
+            done = true;
         }
     }
 
@@ -2903,9 +2889,17 @@ int client_process(int socket_fd, bool read_only, int session_request) {
 
     terminal_guard.restore();
     write_stdout("[?25h");
-    show_local_status("mini-tmux: detached");
+    if (detached_by_user) {
+        show_local_status("mini-tmux: detached");
+    }
     close(sig_pipe[0]);
     close(sig_pipe[1]);
+    if (detached_by_user) {
+        return 0;
+    }
+    if (!received_server_exit && exit_code == 0) {
+        return 1;
+    }
     return exit_code;
 }
 

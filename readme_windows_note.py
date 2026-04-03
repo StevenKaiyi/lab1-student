@@ -1,5 +1,5 @@
 from pathlib import Path
-path = Path('/home/kaiyi/lab1-student/README.md')
+path = Path('/home/kaiyi/lab1-student/docs/README.md')
 text = path.read_text(encoding='utf-8')
 needle = """```bash
 # ±‡“Î£®–Ë“™ C++17£©
